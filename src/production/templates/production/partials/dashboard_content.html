@@ -1,0 +1,270 @@
+<div class="mb-6 flex justify-between items-center">
+    <h2 class="text-xl font-bold text-gray-800">Production Orders</h2>
+    <div class="flex space-x-2">
+        <button onclick="window.openEstimatorModal()"
+                class="bg-white text-indigo-600 border border-indigo-600 hover:bg-indigo-50 px-4 py-2 rounded-lg text-sm font-medium shadow-sm transition">
+            <i class="fas fa-calculator mr-1"></i> Estimate / Check Stock
+        </button>
+
+        <button onclick="document.getElementById('createModal').classList.remove('hidden')"
+                class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg text-sm font-medium shadow-sm transition cursor-pointer">
+            + New Production Order
+        </button>
+    </div>
+</div>
+
+<div class="bg-white shadow-sm rounded-lg border border-gray-200 overflow-hidden">
+    <table class="min-w-full divide-y divide-gray-200">
+        <thead class="bg-gray-50">
+            <tr>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">PO Number</th>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Product</th>
+                <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Quantity</th>
+                <th class="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase">Date</th>
+                <th class="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase">Status</th>
+                <th class="px-6 py-3"></th>
+            </tr>
+        </thead>
+        <tbody class="divide-y divide-gray-200">
+            {% for order in orders %}
+            <tr class="hover:bg-gray-50">
+                <td class="px-6 py-4 whitespace-nowrap text-sm font-bold text-gray-700">{{ order.order_number }}</td>
+                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                    <div class="font-medium text-gray-900">{{ order.product.sku }}</div>
+                    <div class="text-xs text-gray-500">{{ order.product.description }}</div>
+                </td>
+                <td class="px-6 py-4 whitespace-nowrap text-sm text-right font-mono">{{ order.quantity|floatformat:0 }}</td>
+                <td class="px-6 py-4 whitespace-nowrap text-center text-sm text-gray-500">{{ order.start_date }}</td>
+                <td class="px-6 py-4 whitespace-nowrap text-center">
+                    <span class="px-2 py-1 text-xs rounded-full font-semibold
+                        {% if order.status == 'COMPLETED' %}bg-green-100 text-green-800
+                        {% elif order.status == 'CONFIRMED' %}bg-blue-100 text-blue-800
+                        {% elif order.status == 'IN_PROGRESS' %}bg-indigo-100 text-indigo-800
+                        {% elif order.status == 'DRAFT' %}bg-amber-100 text-amber-800
+                        {% elif order.status == 'CANCELLED' %}bg-gray-100 text-gray-800
+                        {% else %}bg-gray-100 text-gray-800{% endif %}">
+                        {{ order.get_status_display }}
+                    </span>
+                </td>
+                <td class="px-6 py-4 whitespace-nowrap text-right text-sm">
+                    <button onclick="window.openProductionModal({{ order.id }})"
+                            class="text-indigo-600 hover:text-indigo-900 font-medium cursor-pointer focus:outline-none">
+                        View
+                    </button>
+                </td>
+            </tr>
+            {% empty %}
+            <tr>
+                <td colspan="6" class="px-6 py-4 text-center text-gray-500">
+                    No production orders found. Create one to get started.
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<div id="createModal" class="relative z-50 hidden" aria-labelledby="modal-title" role="dialog" aria-modal="true">
+    <div class="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" onclick="document.getElementById('createModal').classList.add('hidden')"></div>
+    <div class="fixed inset-0 z-10 w-screen overflow-y-auto">
+        <div class="flex min-h-full items-end justify-center p-4 text-center sm:items-center sm:p-0">
+            <div class="relative transform overflow-hidden rounded-lg bg-white text-left shadow-xl transition-all sm:my-8 sm:w-full sm:max-w-lg">
+                <form action="{% url 'production:create' %}" method="POST">
+                    {% csrf_token %}
+                    <div class="bg-white px-4 pb-4 pt-5 sm:p-6 sm:pb-4">
+                        <h3 class="text-lg font-semibold leading-6 text-gray-900 mb-4">Create Production Order</h3>
+                        <div class="space-y-4">
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700">Select Product (FG)</label>
+                                <select name="product_id" required class="mt-1 block w-full rounded-md border-gray-300 shadow-sm border p-2">
+                                    <option value="">-- Choose a Product --</option>
+                                    {% for fg in fgs %}
+                                        <option value="{{ fg.id }}">{{ fg.sku }} - {{ fg.description }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700">Quantity</label>
+                                <input type="number" name="quantity" min="1" required class="mt-1 block w-full rounded-md border-gray-300 shadow-sm border p-2">
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700">Start Date</label>
+                                <input type="date" name="start_date" required class="mt-1 block w-full rounded-md border-gray-300 shadow-sm border p-2">
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700">Initial Status</label>
+                                <select name="status" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm border p-2">
+                                    <option value="DRAFT">Draft (Budget)</option>
+                                    <option value="CONFIRMED">Confirmed (Reserve Stock)</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="bg-gray-50 px-4 py-3 sm:flex sm:flex-row-reverse sm:px-6">
+                        <button type="submit" class="inline-flex w-full justify-center rounded-md bg-indigo-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-50 sm:ml-3 sm:w-auto">Create</button>
+                        <button type="button" onclick="document.getElementById('createModal').classList.add('hidden')" class="mt-3 inline-flex w-full justify-center rounded-md bg-white px-3 py-2 text-sm font-semibold text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50 sm:mt-0 sm:w-auto">Cancel</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div id="estimatorModal" class="relative z-50 hidden">
+    <div class="fixed inset-0 bg-gray-500 bg-opacity-75" onclick="window.closeEstimatorModal()"></div>
+    <div class="fixed inset-0 z-10 w-screen overflow-y-auto">
+        <div class="flex min-h-full items-center justify-center p-4">
+            <div class="relative transform overflow-hidden rounded-lg bg-white text-left shadow-xl transition-all sm:w-full sm:max-w-4xl">
+                <div class="bg-gray-50 px-4 py-3 border-b flex justify-between items-center">
+                    <h3 class="text-lg font-semibold text-gray-900">Production Estimator</h3>
+                    <button onclick="window.closeEstimatorModal()" class="text-gray-400 hover:text-gray-600">✕</button>
+                </div>
+                <div class="p-6 grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <div class="md:col-span-1 space-y-4 border-r pr-4">
+                        <form action="{% url 'production:create' %}" method="POST">
+                            {% csrf_token %}
+                            <input type="hidden" name="status" value="DRAFT">
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700">Product</label>
+                                <select name="product_id" id="est_product_id" class="mt-1 block w-full rounded-md border p-2" onchange="window.runEstimation()">
+                                    <option value="">-- Select --</option>
+                                    {% for fg in fgs %}<option value="{{ fg.id }}">{{ fg.sku }}</option>{% endfor %}
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700">Qty</label>
+                                <input type="number" name="quantity" id="est_quantity" value="1" min="1" class="mt-1 block w-full rounded-md border p-2" oninput="window.runEstimation()">
+                            </div>
+                            <div class="pt-4 border-t mt-4">
+                                <label class="block text-sm font-medium text-gray-700">Date</label>
+                                <input type="date" name="start_date" class="mt-1 block w-full rounded-md border p-2" required>
+                            </div>
+                            <div class="mt-6">
+                                <button type="submit" class="w-full justify-center rounded-md bg-indigo-600 px-3 py-2 text-sm font-semibold text-white hover:bg-indigo-500">Save Draft</button>
+                            </div>
+                        </form>
+                    </div>
+                    <div class="md:col-span-2">
+                        <div id="est_summary" class="hidden mb-4 p-3 rounded-md text-sm"></div>
+                        <div class="overflow-hidden shadow ring-1 ring-black ring-opacity-5 rounded-lg">
+                            <table class="min-w-full divide-y divide-gray-300">
+                                <thead class="bg-gray-50"><tr><th class="py-2 pl-4 text-left text-xs text-gray-500">Component</th><th class="px-3 py-2 text-right text-xs text-gray-500">Req</th><th class="px-3 py-2 text-right text-xs text-gray-500">Stock</th><th class="px-3 py-2 text-center text-xs text-gray-500">Status</th></tr></thead>
+                                <tbody id="est_table_body" class="divide-y divide-gray-200 bg-white text-sm"><tr><td colspan="4" class="text-center py-4 text-gray-500">Select product.</td></tr></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div id="production-modal" class="relative z-50 hidden" aria-labelledby="modal-title" role="dialog" aria-modal="true">
+    <div id="modal-content" class="fixed inset-0 z-50 overflow-y-auto flex items-center justify-center min-h-full p-4 text-center sm:p-0"></div>
+</div>
+
+<script>
+(function() {
+    // 定义全局函数
+    window.openEstimatorModal = function() {
+        const modal = document.getElementById('estimatorModal');
+        if(modal) modal.classList.remove('hidden');
+    };
+
+    window.closeEstimatorModal = function() {
+        const modal = document.getElementById('estimatorModal');
+        if(modal) modal.classList.add('hidden');
+    };
+
+    window.runEstimation = function() {
+        const productId = document.getElementById('est_product_id').value;
+        const qty = document.getElementById('est_quantity').value;
+        if (!productId || !qty) return;
+
+        fetch(`/production/api/calculate-capacity/?product_id=${productId}&quantity=${qty}`)
+            .then(res => res.json())
+            .then(data => {
+                const tbody = document.getElementById('est_table_body');
+                const summary = document.getElementById('est_summary');
+                tbody.innerHTML = '';
+
+                if (data.error) {
+                    tbody.innerHTML = `<tr><td colspan="4" class="text-center text-red-500 py-4">${data.error}</td></tr>`;
+                    return;
+                }
+
+                if (data.is_feasible) {
+                    summary.className = "mb-4 p-3 rounded-md text-sm bg-green-50 text-green-700 border border-green-200";
+                    summary.innerHTML = `✅ <strong>Feasible!</strong> Max: ${data.max_possible}`;
+                    summary.classList.remove('hidden');
+                } else {
+                    summary.className = "mb-4 p-3 rounded-md text-sm bg-red-50 text-red-700 border border-red-200";
+                    summary.innerHTML = `⚠️ <strong>Shortage!</strong> Max: ${data.max_possible}`;
+                    summary.classList.remove('hidden');
+                }
+
+                data.components.forEach(comp => {
+                    const isShort = comp.status === 'SHORTAGE';
+                    const rowClass = isShort ? 'bg-red-50' : '';
+                    const statusBadge = isShort
+                        ? `<span class="bg-red-100 text-red-700 px-2 py-1 rounded text-xs">Short (-${comp.shortage_qty})</span>`
+                        : `<span class="bg-green-100 text-green-700 px-2 py-1 rounded text-xs">OK</span>`;
+
+                    tbody.innerHTML += `
+                        <tr class="${rowClass}">
+                            <td class="py-2 pl-4 text-gray-900 font-medium">${comp.sku}<span class="block text-gray-500 font-normal text-xs">${comp.name}</span></td>
+                            <td class="px-3 py-2 text-right">${comp.required.toFixed(2)}</td>
+                            <td class="px-3 py-2 text-right font-mono">${comp.stock.toFixed(2)}</td>
+                            <td class="px-3 py-2 text-center">${statusBadge}</td>
+                        </tr>`;
+                });
+            });
+    };
+
+    window.openProductionModal = function(orderId) {
+        const modal = document.getElementById('production-modal');
+        const content = document.getElementById('modal-content');
+        if (!modal || !content) return;
+
+        modal.classList.remove('hidden');
+        content.innerHTML = '<div class="bg-white p-6 rounded shadow"><p>Loading...</p></div>';
+
+        fetch(`/production/${orderId}/`, { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+            .then(res => res.text())
+            .then(html => content.innerHTML = html)
+            .catch(err => {
+                content.innerHTML = '<div class="bg-white p-4 text-red-500">Error loading. <button onclick="window.closeModal()">Close</button></div>';
+            });
+    };
+
+    window.closeModal = function() {
+        const modal = document.getElementById('production-modal');
+        if (modal) {
+            modal.classList.add('hidden');
+            document.getElementById('modal-content').innerHTML = '';
+        }
+    };
+
+    // 初始化
+    function init() {
+        const dateFields = document.querySelectorAll('input[type="date"]');
+        const today = new Date().toISOString().split('T')[0];
+        dateFields.forEach(f => { if(!f.value) f.value = today; });
+
+        document.removeEventListener('keydown', handleEsc);
+        document.addEventListener('keydown', handleEsc);
+    }
+
+    function handleEsc(e) {
+        if (e.key === "Escape") {
+            window.closeModal();
+            window.closeEstimatorModal();
+            const cm = document.getElementById('createModal');
+            if(cm) cm.classList.add('hidden');
+        }
+    }
+
+    // 立即运行
+    init();
+})();
+</script>

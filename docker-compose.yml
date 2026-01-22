@@ -1,0 +1,55 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    # 将 entrypoint 挂载进去，这样你修改脚本不需要重新 build 镜像
+    volumes:
+      - ./src:/app
+      - ./docker/entrypoint.sh:/entrypoint.sh
+      - static_volume:/vol/web/static
+      - media_volume:/vol/web/media
+    ports:
+      - "8002:8000"
+    # 加载 .env 文件
+    env_file:
+      - .env
+    environment:
+      - DB_HOST=db
+      - DB_NAME=supplydemand_db
+      - DB_USER=postgres
+      - DB_PASS=changeme123
+      - DB_PORT=5432
+      - DATABASE=postgres # 触发 entrypoint.sh 的等待逻辑
+    # 依赖关系：只有当 db 报告 "healthy" 时，app 才会启动
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+
+  db:
+    image: postgres:15-alpine
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    environment:
+      - POSTGRES_DB=supplydemand_db
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=changeme123
+    # 健康检查：每 5 秒 ping 一次数据库
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    ports:
+      - "5432:5432"
+
+  redis:
+    image: redis:7-alpine
+    restart: always
+
+volumes:
+  postgres_data:
+  static_volume:
+  media_volume:

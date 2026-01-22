@@ -1,0 +1,1346 @@
+<style>
+    /* === Base Card Styles (Grid Mode) === */
+    .asset-card {
+        transition: all 0.2s ease-in-out;
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+    }
+    .asset-card:hover {
+        transform: translateY(-3px);
+        box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+        z-index: 10;
+    }
+    .stock-grid-3 {
+        display: grid;
+        grid-template-columns: 1fr 1fr 1fr;
+        divide-x: 1px solid #f3f4f6;
+    }
+    .stock-cell {
+        padding: 0.5rem;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        text-align: center;
+    }
+    .drag-handle { cursor: grab; }
+    .drag-handle:active { cursor: grabbing; }
+    .sortable-ghost { opacity: 0.4; background-color: #f3f4f6; }
+
+    .tab-btn.active {
+        color: #2563eb;
+        border-bottom-color: #2563eb;
+        background-color: transparent;
+        font-weight: 700;
+    }
+
+    /* === List View Overrides === */
+    .list-view-container {
+        display: flex !important;
+        flex-direction: column;
+        gap: 0.75rem;
+    }
+    .list-view-container .group { width: 100%; }
+
+    .list-view-container .asset-card {
+        flex-direction: row; /* Horizontal layout */
+        align-items: center;
+        height: auto;
+        padding: 0.75rem 1.5rem;
+    }
+    .list-view-container .asset-card:hover {
+        transform: none;
+        background-color: #f8fafc;
+    }
+
+    /* Column 1: Header (Title) */
+    .list-view-container .card-header {
+        flex: 1;
+        margin-bottom: 0 !important;
+        display: flex;
+        align-items: center;
+    }
+
+    .list-view-container .asset-card h3,
+    .list-view-container .asset-card p {
+        width: auto !important;
+        white-space: normal !important;
+        overflow: visible !important;
+        text-overflow: clip !important;
+    }
+    .list-view-container .asset-card p { margin-top: 0.25rem; }
+
+    /* Column 2: Stock */
+    .list-view-container .card-stock {
+        min-width: 250px !important; /* Slightly wider to fit category */
+        margin: 0 2rem !important;
+        padding: 0 !important;
+        background: none !important;
+        border: none !important;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: flex-end;
+        text-align: right;
+    }
+
+    /* List View: Show Category next to Stock in the upper row */
+    .list-view-container .card-stock .stock-grid {
+        display: flex !important;
+        flex-direction: row !important;
+        align-items: center !important;
+        justify-content: flex-end !important;
+        gap: 0.75rem !important;
+        width: auto !important;
+        border: none !important;
+    }
+
+    /* Adjust Stock Col in List View */
+    .list-view-container .card-stock .stock-col {
+        border: none !important;
+        padding: 0 !important;
+        align-items: flex-end !important;
+        width: auto !important;
+    }
+    .list-view-container .card-stock h2 { font-size: 1.25rem !important; }
+    .list-view-container .card-stock p.label-text { display: none; }
+
+    /* Adjust Category Col in List View */
+    .list-view-container .card-stock .category-col {
+        display: block !important;
+        background: none !important;
+        padding: 0 !important;
+        width: auto !important;
+    }
+    /* Hide the "Category" label inside the col in list view */
+    .list-view-container .card-stock .category-col p { display: none !important; }
+
+    .list-view-container .calc-info {
+        margin-top: 0 !important;
+        padding-top: 0 !important;
+        border-top: none !important;
+        align-items: flex-end !important;
+    }
+
+    /* Column 3: Status Footer */
+    .list-view-container .card-footer {
+        margin-top: 0 !important;
+        padding-top: 0 !important;
+        border-top: none !important;
+        min-width: 140px;
+        justify-content: flex-end;
+        gap: 1rem;
+    }
+
+    /* Column 4: Actions (New) */
+    .list-view-container .card-actions {
+        margin-top: 0 !important;
+        padding-top: 0 !important;
+        border-top: none !important;
+        margin-left: auto; /* Push to far right */
+        padding-left: 1.5rem;
+        border-left: 1px solid #f3f4f6; /* Optional separator */
+    }
+
+    #editProductModal { z-index: 50; }
+</style>
+
+<div class="container-fluid px-0 h-full flex flex-col">
+
+    <div class="bg-white border-b border-gray-200 px-6 pt-4 sticky top-0 z-20 shadow-sm" id="dashboard-header">
+        <div class="flex justify-between items-center mb-4 gap-4">
+
+            <div class="flex-1 max-w-4xl flex items-center space-x-3">
+
+                <h2 class="text-xl font-bold text-gray-800 whitespace-nowrap">{{ page_title }} Dashboard</h2>
+
+                <div class="relative flex-1">
+                    <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                        <svg class="h-4 w-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
+                    </div>
+                    <input type="text"
+                           id="inventory-search-input"
+                           value="{{ current_search }}"
+                           placeholder="Search SKU, Description..."
+                           class="block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-md leading-5 bg-white placeholder-gray-500 focus:outline-none focus:placeholder-gray-400 focus:ring-1 focus:ring-blue-500 focus:border-blue-500 sm:text-sm transition duration-150 ease-in-out"
+                           oninput="debounceSearch()">
+                </div>
+
+                <input type="hidden" id="inventory-category-filter" value="{{ current_category }}">
+
+                <div class="flex items-center space-x-2 overflow-x-auto no-scrollbar max-w-md pb-1" id="category-filter-container">
+                    <button type="button"
+                            onclick="setCategoryFilter('')"
+                            data-value=""
+                            class="category-filter-btn px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-colors shadow-sm border border-transparent {% if not current_category %}bg-gray-800 text-white{% else %}bg-gray-100 text-gray-600 hover:bg-gray-200 border-gray-200{% endif %}">
+                        All
+                    </button>
+                    {% for cat in all_categories %}
+                    <button type="button"
+                            onclick="setCategoryFilter('{{ cat }}')"
+                            data-value="{{ cat }}"
+                            class="category-filter-btn px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-colors shadow-sm border border-transparent {% if current_category == cat %}bg-gray-800 text-white{% else %}bg-gray-100 text-gray-600 hover:bg-gray-200 border-gray-200{% endif %}">
+                        {{ cat }}
+                    </button>
+                    {% endfor %}
+
+                    <button type="button"
+                            onclick="openManageCategoriesModal()"
+                            class="px-2 py-1.5 rounded-full text-gray-400 hover:bg-gray-100 hover:text-gray-600 transition-colors"
+                            title="Manage Categories">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+                    </button>
+                </div>
+            </div>
+
+            <div class="flex items-center space-x-3">
+                <div class="bg-gray-100 p-1 rounded-lg flex items-center shadow-inner">
+                    <button type="button" onclick="toggleView('grid')" id="view-btn-grid" class="p-1.5 rounded-md text-gray-500 hover:text-gray-700 transition-all shadow-sm bg-white">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"></path></svg>
+                    </button>
+                    <button type="button" onclick="toggleView('list')" id="view-btn-list" class="p-1.5 rounded-md text-gray-500 hover:text-gray-700 transition-all">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path></svg>
+                    </button>
+                </div>
+                <div class="h-6 w-px bg-gray-300 mx-2"></div>
+                <button type="button" onclick="openImportModal()" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition flex items-center shadow-sm">
+                    <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path></svg>
+                    Import Data
+                </button>
+            </div>
+        </div>
+
+        <nav class="flex space-x-4 overflow-x-auto no-scrollbar" aria-label="Tabs">
+            {% for tab in tabs_data %}
+            <button type="button" onclick="switchTab('tab-{{ tab.group_id }}')" ondblclick="{% if not tab.is_all %}renameTab({{ tab.group_id }}, '{{ tab.name }}'){% endif %}" id="btn-tab-{{ tab.group_id }}" class="tab-btn whitespace-nowrap py-3 px-1 border-b-2 border-transparent font-medium text-sm text-gray-500 hover:text-gray-700 hover:border-gray-300 flex items-center group {% if forloop.first %}active{% endif %}" data-target="tab-{{ tab.group_id }}">
+                {{ tab.name }}
+                {% if not tab.is_all %}
+                <span onclick="deleteTab(event, {{ tab.group_id }})" class="ml-2 text-gray-300 hover:text-red-500 rounded-full p-0.5 transition-colors opacity-0 group-hover:opacity-100">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                </span>
+                {% endif %}
+                <span class="ml-2 bg-gray-100 text-gray-600 py-0.5 px-2 rounded-full text-xs">{{ tab.assets|length }}</span>
+            </button>
+            {% endfor %}
+            <button type="button" onclick="createNewTab()" class="whitespace-nowrap py-3 px-3 font-medium text-sm text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded-t-lg transition-colors">+ New Group</button>
+        </nav>
+    </div>
+
+    <div class="flex-1 overflow-y-auto p-6 bg-gray-50 relative transition-colors duration-200" id="main-view-area">
+    {% for tab in tabs_data %}
+    <div id="tab-{{ tab.group_id }}" class="tab-pane {% if not forloop.first %}hidden{% endif %} h-full">
+        {% if tab.assets %}
+        <div class="dynamic-view-container grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 sortable-grid pb-20" data-group-id="{{ tab.group_id }}">
+            {% for product in tab.assets %}
+            <div class="relative group" data-id="{{ product.id }}">
+                <div class="asset-card bg-white rounded-xl p-5 border {% if product.is_temporary %}border-amber-400 ring-4 ring-amber-50/50{% else %}border-gray-100{% endif %} shadow-sm">
+
+                    <div class="card-header flex justify-between items-start mb-3">
+                        <div class="flex items-center overflow-hidden flex-1">
+                            <div class="drag-handle text-gray-300 hover:text-gray-500 mr-3 p-1 cursor-grab active:cursor-grabbing">
+                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8h16M4 16h16"></path></svg>
+                            </div>
+                            <div>
+                                <h3 class="font-bold text-gray-800 text-lg truncate w-40 leading-tight" title="{{ product.sku }}">
+                                    {{ product.sku }}
+                                </h3>
+                                <p class="text-xs text-gray-500 truncate w-48 mt-1" title="{{ product.description }}">
+                                    {{ product.description }}
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="card-stock my-3 bg-white rounded-lg border border-gray-100 overflow-hidden shadow-sm">
+
+                        <div class="stock-grid-3 divide-x divide-gray-100 border-b border-gray-100">
+                            <div class="stock-cell bg-gray-50/50">
+                                <span class="text-[9px] uppercase font-bold text-gray-400 tracking-wider">On Hand</span>
+                                <span class="text-lg font-extrabold text-gray-800 leading-tight">
+                                    {{ product.qty_on_hand|default:0|floatformat:0 }}
+                                </span>
+                                <span class="text-[9px] text-gray-400">{{ product.uom }}</span>
+                            </div>
+
+                            <div class="stock-cell
+                                {% if product.nature == 'FG' and product.qty_fg_wip > 0 %}bg-blue-50/30
+                                {% elif product.nature != 'FG' and product.qty_reserved > 0 %}bg-amber-50/30
+                                {% else %}bg-white{% endif %}">
+
+                                <span class="text-[9px] uppercase font-bold tracking-wider
+                                    {% if product.nature == 'FG' %}text-blue-400{% else %}text-amber-500{% endif %}">
+                                    {% if product.nature == 'FG' %}Inbound{% else %}Locked{% endif %}
+                                </span>
+
+                                <span class="text-lg font-bold leading-tight
+                                    {% if product.nature == 'FG' %}text-blue-600{% else %}text-amber-600{% endif %}">
+                                    {% if product.nature == 'FG' %}
+                                        {{ product.qty_fg_wip|default:0|floatformat:0 }}
+                                    {% else %}
+                                        {{ product.qty_reserved|default:0|floatformat:0 }}
+                                    {% endif %}
+                                </span>
+
+                                <span class="text-[9px] text-gray-400">WIP</span>
+                            </div>
+
+                            <div class="stock-cell bg-white">
+                                <span class="text-[9px] uppercase font-bold text-green-600 tracking-wider">Net Avail</span>
+                                <span class="text-lg font-extrabold text-green-700 leading-tight">
+                                    {{ product.net_available|default:0|floatformat:0 }}
+                                </span>
+                                <span class="text-[9px] text-gray-400">Useable</span>
+                            </div>
+                        </div>
+
+                        <div class="px-2 py-1.5 bg-gray-50 flex justify-between items-center text-[14px]">
+                            {% if product.nature == 'FG' %}
+                                <span class="text-gray-400">Draft Plan: <strong>{{ product.qty_fg_draft|default:0|floatformat:0 }}</strong></span>
+                                <span class="text-gray-400">Pjt Avail: {{ product.projected_stock|floatformat:0 }}</span>
+                            {% else %}
+                                <span class="text-gray-400">Budgeted: <strong>{{ product.qty_rm_draft|default:0|floatformat:0 }}</strong></span>
+                                <span class="text-gray-400" title="Projected = Net - Budgeted">Pjt Avail: {{ product.projected_stock|floatformat:0 }}</span>
+                            {% endif %}
+                        </div>
+                    </div>
+
+                    <div class="card-footer flex justify-between items-center text-xs mt-auto pt-1">
+                        <span class="px-2 py-0.5 rounded bg-gray-100 text-gray-500 font-medium">
+                            {{ product.category|default:"General" }}
+                        </span>
+
+                        {% if product.net_available <= 0 %}
+                             <span class="text-red-600 font-bold flex items-center">
+                                <span class="w-1.5 h-1.5 bg-red-500 rounded-full mr-1.5 animate-pulse"></span> Low
+                            </span>
+                        {% else %}
+                             <span class="text-green-600 font-bold flex items-center">OK</span>
+                        {% endif %}
+                    </div>
+
+                    <div class="card-actions flex items-center justify-end space-x-2 mt-3 pt-2 border-t border-gray-50">
+
+                        {% if product.is_temporary %}
+                        <button type="button"
+                            onclick="deleteProduct(event, {{ product.id }})"
+                            class="text-gray-400 hover:text-red-600 p-1.5 rounded-md hover:bg-red-50 transition"
+                            title="Delete Item">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                        </button>
+                        {% endif %}
+
+                        {% if product.nature == 'FG' %}
+                        <button type="button"
+                            onclick="openBomModal({{ product.id }}, '{{ product.sku|escapejs }}', '{{ product.description|escapejs }}')"
+                            class="text-gray-400 hover:text-indigo-600 p-1.5 rounded-md hover:bg-indigo-50 transition"
+                            title="Manage Recipe (Ingredients)">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z"></path></svg>
+                        </button>
+                        {% endif %}
+
+                        <button type="button"
+                            onclick="openEditModal(this)"
+                            data-id="{{ product.id }}"
+                            data-is-temp="{{ product.is_temporary|yesno:'true,false' }}"
+                            data-sku="{{ product.sku }}"
+                            data-desc="{{ product.description|default:'' }}"
+                            data-category="{{ product.category|default:'' }}"
+                            data-uom="{{ product.uom }}"
+                            data-weight="{{ product.unit_weight|default:0 }}"
+                            data-volume="{{ product.unit_volume|default:0 }}"
+                            data-safety="{{ product.safety_stock_days }}"
+                            data-moq="{{ product.moq|default:0 }}"
+                            data-lead="{{ product.lead_time_days }}"
+                            class="text-gray-400 hover:text-blue-600 p-1.5 rounded-md hover:bg-gray-50 transition"
+                            title="Edit Item">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path></svg>
+                        </button>
+
+                        <div class="relative dropdown-container">
+                            <button type="button"
+                                onclick="toggleDropdown(this)"
+                                class="text-gray-400 hover:text-blue-600 p-1.5 rounded-md hover:bg-gray-50 transition"
+                                title="Move Item">
+                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7v8a2 2 0 002 2h6M8 7V5a2 2 0 012-2h4.586a1 1 0 01.707.293l4.414 4.414a1 1 0 01.293.707V15a2 2 0 01-2 2h-2M8 7H6a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2v-2"></path></svg>
+                            </button>
+
+                            <div class="hidden absolute right-0 bottom-full mb-2 w-48 bg-white rounded-lg shadow-xl z-50 border border-gray-100 py-1 dropdown-menu transform origin-bottom-right">
+                                <div class="px-4 py-2 text-xs font-semibold text-gray-400 uppercase tracking-wider border-b bg-gray-50">Move to...</div>
+                                <button type="button" onclick="moveProduct(event, {{ product.id }}, 'NONE')" class="w-full text-left block px-4 py-2 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-700">🚫 Uncategorized</button>
+                                {% for g in groups_available %}
+                                    {% if g.id != tab.group_id %}
+                                    <button type="button" onclick="moveProduct(event, {{ product.id }}, {{ g.id }})" class="w-full text-left block px-4 py-2 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-700">📂 {{ g.name }}</button>
+                                    {% endif %}
+                                {% endfor %}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div class="flex flex-col items-center justify-center h-64 text-gray-400">
+            <p>No items found.</p>
+        </div>
+        {% endif %}
+    </div>
+    {% endfor %}
+</div>
+
+<div id="editProductModal" class="hidden fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full" onclick="if(event.target === this) closeEditModal()">
+    <div class="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white">
+        <div class="mt-3">
+            <h3 class="text-lg leading-6 font-medium text-gray-900 mb-2">Edit Product</h3>
+            <form id="editProductForm" class="text-left">
+                <input type="hidden" id="edit_product_id" name="id">
+                <div class="mb-3">
+                    <label class="block text-sm font-medium text-gray-700">SKU</label>
+                    <input type="text" id="edit_sku" name="sku" class="mt-1 py-2 px-2 block w-full rounded-md border-gray-300 shadow-sm bg-gray-100" readonly>
+                </div>
+                <div class="mb-3">
+                    <label class="block text-sm font-medium text-gray-700">Description</label>
+                    <input type="text" id="edit_desc" name="description" class="mt-1 py-2 px-2 block w-full rounded-md border-gray-300 shadow-sm">
+                </div>
+                <div class="mb-3">
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Category</label>
+                    <input type="hidden" id="edit_category" name="category">
+
+                    <div class="flex flex-wrap gap-2" id="category-btn-container">
+                        {% for cat in all_categories %}
+                        <button type="button"
+                                onclick="selectCategory('{{ cat }}', this)"
+                                class="category-btn px-3 py-1 rounded-md text-xs font-medium border border-gray-200 bg-white text-gray-600 hover:border-blue-300 hover:text-blue-600 transition-all shadow-sm">
+                            {{ cat }}
+                        </button>
+                        {% endfor %}
+
+                        <button type="button"
+                                onclick="toggleCustomCategory()"
+                                class="px-3 py-1 rounded-md text-xs font-medium border border-dashed border-gray-300 text-gray-400 hover:border-blue-400 hover:text-blue-600 transition-all flex items-center">
+                            <svg class="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
+                            Custom
+                        </button>
+                    </div>
+
+                    <input type="text"
+                           id="edit_category_custom"
+                           class="mt-3 py-2 px-2 block w-full rounded-md border-gray-300 shadow-sm text-sm hidden placeholder-gray-400 focus:border-blue-500 focus:ring-blue-500"
+                           placeholder="Enter new category name..."
+                           oninput="document.getElementById('edit_category').value = this.value">
+                </div>
+                <div class="grid grid-cols-2 gap-3">
+                    <div class="mb-3">
+                        <label class="block text-sm font-medium text-gray-700">Unit (UOM)</label>
+                        <input type="text" id="edit_uom" name="uom" class="mt-1 py-2 px-2 block w-full rounded-md border-gray-300 shadow-sm">
+                    </div>
+                    <div class="mb-3">
+                         <label class="block text-sm font-medium text-gray-700">Weight (kg)</label>
+                         <input type="number" step="0.01" id="edit_weight" name="unit_weight" class="mt-1 py-2 px-2 block w-full rounded-md border-gray-300 shadow-sm">
+                    </div>
+                </div>
+                <div class="mb-3">
+                     <label class="block text-sm font-medium text-gray-700">Volume (L)</label>
+                     <input type="number" step="0.01" id="edit_volume" name="unit_volume" class="mt-1 py-2 px-2 block w-full rounded-md border-gray-300 shadow-sm">
+                </div>
+                <div class="grid grid-cols-2 gap-3">
+                     <div class="mb-3">
+                        <label class="block text-sm font-medium text-gray-700">Safety Stock</label>
+                        <input type="number" id="edit_safety" name="safety_stock_days" class="mt-1 py-2 px-2 block w-full rounded-md border-gray-300 shadow-sm">
+                    </div>
+                     <div class="mb-3">
+                        <label class="block text-sm font-medium text-gray-700">Lead Time</label>
+                        <input type="number" id="edit_lead" name="lead_time_days" class="mt-1 py-2 px-2 block w-full rounded-md border-gray-300 shadow-sm">
+                    </div>
+                </div>
+                <div class="mt-4 flex justify-end space-x-3">
+                    <button type="button" onclick="closeEditModal()" class="px-4 py-2 bg-gray-200 text-gray-800 rounded-md">Cancel</button>
+                    <button type="button" onclick="submitEditForm()" class="px-4 py-2 bg-blue-600 text-white rounded-md">Save</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/sortablejs@latest/Sortable.min.js"></script>
+
+<script>
+    var CURRENT_NATURE = "{{ current_nature }}";
+    var searchTimer = null;
+    let selectedComponentData = null;
+
+    // === Search & Filter Logic ===
+    function debounceSearch() {
+        clearTimeout(searchTimer);
+        searchTimer = setTimeout(() => {
+            refreshInventory();
+        }, 300); // 300ms delay
+    }
+
+    function setCategoryFilter(val) {
+        // Update hidden input
+        document.getElementById('inventory-category-filter').value = val;
+
+        // Update Visuals manually (since Header is not refreshed by AJAX)
+        document.querySelectorAll('.category-filter-btn').forEach(btn => {
+            // Reset to inactive
+            btn.classList.remove('bg-gray-800', 'text-white');
+            btn.classList.add('bg-gray-100', 'text-gray-600', 'hover:bg-gray-200', 'border-gray-200');
+
+            // Set active if matches
+            if (btn.getAttribute('data-value') === val) {
+                btn.classList.remove('bg-gray-100', 'text-gray-600', 'hover:bg-gray-200', 'border-gray-200');
+                btn.classList.add('bg-gray-800', 'text-white');
+            }
+        });
+
+        refreshInventory();
+    }
+
+    async function refreshInventory() {
+        const searchVal = document.getElementById('inventory-search-input').value;
+        const categoryVal = document.getElementById('inventory-category-filter').value;
+
+        const params = new URLSearchParams({
+            search: searchVal,
+            category: categoryVal
+        });
+
+        // Add header to request partial content
+        try {
+            const response = await fetch(`${window.location.pathname}?${params.toString()}`, {
+                headers: { 'X-Requested-With': 'XMLHttpRequest' }
+            });
+            const htmlText = await response.text();
+
+            // Parse the response
+            const parser = new DOMParser();
+            const doc = parser.parseFromString(htmlText, 'text/html');
+
+            // 1. Replace Tabs Navigation (to update counts)
+            const oldNav = document.querySelector('nav[aria-label="Tabs"]');
+            const newNav = doc.querySelector('nav[aria-label="Tabs"]');
+            if (oldNav && newNav) {
+                oldNav.replaceWith(newNav);
+            }
+
+            // 2. Replace Main Content Area
+            const oldMain = document.getElementById('main-view-area');
+            const newMain = doc.getElementById('main-view-area');
+            if (oldMain && newMain) {
+                oldMain.replaceWith(newMain);
+            }
+
+            // Re-initialize any plugins if necessary (e.g. Sortable)
+            initSortable();
+
+            // Re-apply view mode logic (Grid/List)
+            restoreViewMode();
+
+            // Restore active tab logic if needed (though filtering usually resets context)
+            // But we keep the logic simple: The backend renders the tabs based on the filter.
+            restoreActiveTab();
+
+        } catch (e) {
+            console.error("Search failed", e);
+        }
+    }
+
+    // === View Toggling Logic ===
+    window.toggleView = function(mode) {
+        const containers = document.querySelectorAll('.dynamic-view-container');
+        const gridBtn = document.getElementById('view-btn-grid');
+        const listBtn = document.getElementById('view-btn-list');
+
+        if (mode === 'list') {
+            containers.forEach(el => el.classList.add('list-view-container'));
+            listBtn.classList.add('bg-white', 'shadow-sm');
+            gridBtn.classList.remove('bg-white', 'shadow-sm');
+        } else {
+            containers.forEach(el => el.classList.remove('list-view-container'));
+            gridBtn.classList.add('bg-white', 'shadow-sm');
+            listBtn.classList.remove('bg-white', 'shadow-sm');
+        }
+        localStorage.setItem('inventoryViewMode', mode);
+    }
+
+    function restoreViewMode() {
+        const savedMode = localStorage.getItem('inventoryViewMode') || 'grid';
+        toggleView(savedMode);
+    }
+
+    // === Tab Switching Logic ===
+    window.switchTab = function(targetId) {
+        document.querySelectorAll('.tab-pane').forEach(el => el.classList.add('hidden'));
+        document.querySelectorAll('.tab-btn').forEach(el => {
+            el.classList.remove('active', 'border-blue-600', 'text-blue-600');
+            el.classList.add('border-transparent', 'text-gray-500');
+        });
+
+        var targetPane = document.getElementById(targetId);
+        if(targetPane) targetPane.classList.remove('hidden');
+
+        const btn = document.getElementById('btn-' + targetId);
+        if(btn) {
+            btn.classList.add('active');
+            btn.classList.remove('border-transparent', 'text-gray-500');
+        }
+
+        localStorage.setItem('activeInvTab_' + CURRENT_NATURE, targetId);
+    }
+
+    if (!window.hasInitializedInvTabs) {
+        document.addEventListener("DOMContentLoaded", function() {
+            restoreViewMode();
+            restoreActiveTab();
+        });
+        window.hasInitializedInvTabs = true;
+    }
+
+    if (document.readyState === "complete" || document.readyState === "interactive") {
+        setTimeout(() => {
+            restoreViewMode();
+            restoreActiveTab();
+        }, 50);
+    }
+
+    function restoreActiveTab() {
+        const savedTab = localStorage.getItem('activeInvTab_' + CURRENT_NATURE);
+        if(savedTab && document.getElementById(savedTab)) {
+            window.switchTab(savedTab);
+        } else {
+            const firstBtn = document.querySelector('.tab-btn');
+            if(firstBtn) window.switchTab(firstBtn.getAttribute('data-target'));
+        }
+    }
+
+
+    // === API Calls: Create, Rename, Delete Tab ===
+
+    // Dynamic Create Tab (No Refresh)
+    window.createNewTab = async function() {
+        const name = prompt("Enter new Group name:");
+        if (!name) return;
+        try {
+            const response = await fetch("{% url 'inventory:group_create' %}", {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name: name, nature: CURRENT_NATURE })
+            });
+            const data = await response.json();
+            if (response.ok && data.status === 'ok') {
+                const newGroupId = data.group_id;
+                // For simplicity, reload to get new structure or implement manual DOM insertion like before
+                location.reload();
+            } else {
+                alert("Error: " + (data.message || "Could not create group"));
+            }
+        } catch (e) { console.error(e); alert("Network error"); }
+    }
+
+    window.renameTab = async function(id, oldName) {
+        const newName = prompt("Rename Group:", oldName);
+        if (newName && newName !== oldName) {
+            await fetch(`/inventory/api/group/rename/${id}/`, {
+                method: 'POST',
+                body: JSON.stringify({name: newName})
+            });
+            location.reload();
+        }
+    }
+
+    // Dynamic Delete Tab (No Refresh)
+    window.deleteTab = async function(e, id) {
+        e.stopPropagation();
+        if(!confirm("Delete this group? Items will be moved to 'Uncategorized'.")) return;
+        try {
+            const response = await fetch(`/inventory/api/group/delete/${id}/`, { method: 'POST' });
+            if (response.ok) {
+                location.reload();
+            }
+        } catch(e) { console.error(e); }
+    }
+
+    window.moveProduct = async function(e, prodId, groupId) {
+        e.preventDefault(); e.stopPropagation();
+        await fetch(`/inventory/api/product/move/${prodId}/`, {
+            method: 'POST',
+            body: JSON.stringify({ group_id: groupId })
+        });
+        location.reload();
+    }
+
+    window.deleteProduct = async function(e, id) {
+        e.stopPropagation();
+        if(!confirm("Are you sure you want to delete this product?")) return;
+        try {
+            const response = await fetch(`/inventory/api/product/delete/${id}/`, { method: 'POST' });
+            if (response.ok) {
+                const card = document.querySelector(`.group[data-id="${id}"]`);
+                if(card) card.remove();
+            } else {
+                alert("Failed to delete.");
+            }
+        } catch(e) { console.error(e); }
+    }
+
+    // === Edit Modal Logic ===
+    window.openEditModal = function(btn) {
+        const id = btn.getAttribute('data-id');
+        const isTemp = btn.getAttribute('data-is-temp') === 'true';
+        const sku = btn.getAttribute('data-sku');
+        const desc = btn.getAttribute('data-desc');
+        const category = btn.getAttribute('data-category');
+        const uom = btn.getAttribute('data-uom');
+        const weight = btn.getAttribute('data-weight');
+        const volume = btn.getAttribute('data-volume');
+        const safety = btn.getAttribute('data-safety');
+        const lead = btn.getAttribute('data-lead');
+
+        document.getElementById('edit_product_id').value = id;
+
+        // SKU Logic
+        const skuInput = document.getElementById('edit_sku');
+        skuInput.value = sku;
+        if (isTemp) {
+            skuInput.removeAttribute('readonly');
+            skuInput.classList.remove('bg-gray-100');
+            skuInput.classList.add('bg-white', 'focus:ring-blue-500', 'focus:border-blue-500');
+        } else {
+            skuInput.setAttribute('readonly', 'true');
+            skuInput.classList.add('bg-gray-100');
+            skuInput.classList.remove('bg-white', 'focus:ring-blue-500', 'focus:border-blue-500');
+        }
+
+        document.getElementById('edit_desc').value = desc;
+
+        // Category Logic: Select button or show custom input
+        document.getElementById('edit_category').value = category;
+        const customInput = document.getElementById('edit_category_custom');
+        customInput.classList.add('hidden'); // Reset custom input
+
+        let foundBtn = false;
+        document.querySelectorAll('.category-btn').forEach(b => {
+            // Reset styles
+            b.classList.remove('bg-blue-600', 'text-white', 'border-blue-600', 'ring-2', 'ring-blue-200');
+            b.classList.add('bg-white', 'text-gray-600', 'border-gray-200');
+
+            if (b.innerText.trim() === category) {
+                b.classList.remove('bg-white', 'text-gray-600', 'border-gray-200');
+                b.classList.add('bg-blue-600', 'text-white', 'border-blue-600', 'ring-2', 'ring-blue-200');
+                foundBtn = true;
+            }
+        });
+
+        // If category exists but not in button list (or is new), show in custom input
+        if (!foundBtn && category) {
+            customInput.classList.remove('hidden');
+            customInput.value = category;
+        } else {
+            customInput.value = '';
+        }
+
+        document.getElementById('edit_uom').value = uom;
+        document.getElementById('edit_weight').value = weight;
+        document.getElementById('edit_volume').value = volume;
+        document.getElementById('edit_safety').value = safety;
+        document.getElementById('edit_lead').value = lead;
+
+        document.getElementById('editProductModal').classList.remove('hidden');
+    }
+
+    window.selectCategory = function(val, btn) {
+        document.getElementById('edit_category').value = val;
+        document.getElementById('edit_category_custom').classList.add('hidden');
+
+        // Reset all buttons
+        document.querySelectorAll('.category-btn').forEach(b => {
+            b.classList.remove('bg-blue-600', 'text-white', 'border-blue-600', 'ring-2', 'ring-blue-200');
+            b.classList.add('bg-white', 'text-gray-600', 'border-gray-200');
+        });
+
+        // Highlight selected
+        if(btn) {
+            btn.classList.remove('bg-white', 'text-gray-600', 'border-gray-200');
+            btn.classList.add('bg-blue-600', 'text-white', 'border-blue-600', 'ring-2', 'ring-blue-200');
+        }
+    }
+
+    window.toggleCustomCategory = function() {
+        // Reset buttons
+        document.querySelectorAll('.category-btn').forEach(b => {
+            b.classList.remove('bg-blue-600', 'text-white', 'border-blue-600', 'ring-2', 'ring-blue-200');
+            b.classList.add('bg-white', 'text-gray-600', 'border-gray-200');
+        });
+
+        const input = document.getElementById('edit_category_custom');
+        input.classList.remove('hidden');
+        input.focus();
+        input.value = '';
+        document.getElementById('edit_category').value = ''; // Clear value so user must type
+    }
+
+    window.closeEditModal = function() {
+        document.getElementById('editProductModal').classList.add('hidden');
+    }
+
+    window.submitEditForm = async function() {
+        const form = document.getElementById('editProductForm');
+        const formData = new FormData(form);
+        const id = formData.get('id');
+        const payload = Object.fromEntries(formData.entries());
+
+        try {
+            const response = await fetch(`/inventory/product/update/${id}/`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': '{{ csrf_token }}'
+                },
+                body: JSON.stringify(payload)
+            });
+
+            if (response.ok) {
+                location.reload();
+            } else {
+                const data = await response.json();
+                alert(data.message || "Failed to update product.");
+            }
+        } catch (e) {
+            console.error(e);
+            alert("Error saving product.");
+        }
+    }
+
+    // --- UI Utilities ---
+    window.toggleDropdown = function(btn) {
+        document.querySelectorAll('.dropdown-menu').forEach(d => {
+            if(d !== btn.nextElementSibling) d.classList.add('hidden');
+        });
+        const menu = btn.nextElementSibling;
+        menu.classList.toggle('hidden');
+    }
+    window.onclick = function(event) {
+        if (!event.target.closest('.dropdown-container')) {
+            document.querySelectorAll('.dropdown-menu').forEach(d => d.classList.add('hidden'));
+        }
+    }
+
+    // --- SortableJS ---
+    function initSortable() {
+        var grids = document.querySelectorAll('.sortable-grid');
+        grids.forEach(el => {
+            if(!el.classList.contains('sortable-initialized')) {
+                Sortable.create(el, {
+                    animation: 150,
+                    handle: '.drag-handle',
+                    ghostClass: 'sortable-ghost',
+                    onEnd: function (evt) {
+                        var order = this.toArray();
+                        fetch("{% url 'inventory:product_reorder' %}", {
+                            method: 'POST',
+                            body: JSON.stringify({order: order})
+                        });
+                    }
+                });
+                el.classList.add('sortable-initialized');
+            }
+        });
+    }
+
+    // Initialize on load
+    initSortable();
+    // === Category Management Logic ===
+
+    // Available categories from server context
+    var ALL_CATEGORIES = [
+        {% for cat in all_categories %}"{{ cat }}"{% if not forloop.last %},{% endif %}{% endfor %}
+    ];
+
+    window.openManageCategoriesModal = function() {
+        const listContainer = document.getElementById('manage_category_list');
+        listContainer.innerHTML = '';
+
+        ALL_CATEGORIES.forEach(cat => {
+            const row = document.createElement('div');
+            row.className = "flex justify-between items-center p-3 border-b border-gray-100 last:border-0 hover:bg-gray-50";
+            row.innerHTML = `
+                <span class="text-sm font-medium text-gray-700">${cat}</span>
+                <div class="flex space-x-2">
+                    <button onclick="renameCategory('${cat}')" class="text-blue-500 hover:text-blue-700 p-1" title="Rename">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path></svg>
+                    </button>
+                    <button onclick="deleteCategory('${cat}')" class="text-red-400 hover:text-red-600 p-1" title="Delete (Move items to General)">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                    </button>
+                </div>
+            `;
+            listContainer.appendChild(row);
+        });
+
+        document.getElementById('manageCategoriesModal').classList.remove('hidden');
+    }
+
+    window.closeManageCategoriesModal = function() {
+        document.getElementById('manageCategoriesModal').classList.add('hidden');
+    }
+
+    window.renameCategory = async function(oldName) {
+        const newName = prompt(`Rename category "${oldName}" to:`, oldName);
+        if (newName && newName !== oldName) {
+            try {
+                const response = await fetch("{% url 'inventory:category_rename' %}", {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        old_name: oldName,
+                        new_name: newName,
+                        nature: CURRENT_NATURE
+                    })
+                });
+                if(response.ok) {
+                    location.reload();
+                } else {
+                    alert("Failed to rename category.");
+                }
+            } catch(e) { console.error(e); }
+        }
+    }
+
+    window.deleteCategory = async function(catName) {
+        if(confirm(`Are you sure you want to delete "${catName}"? \nAll items in this category will be moved to "General".`)) {
+            try {
+                const response = await fetch("{% url 'inventory:category_delete' %}", {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        category_name: catName,
+                        nature: CURRENT_NATURE
+                    })
+                });
+                if(response.ok) {
+                    location.reload();
+                } else {
+                    alert("Failed to delete category.");
+                }
+            } catch(e) { console.error(e); }
+        }
+    }
+
+    let currentBomProductId = null;
+    let selectedComponentId = null;
+    let bomSearchTimer = null;
+
+    // === Open/Close Modal ===
+    function openBomModal(productId, sku, desc) {
+        currentBomProductId = productId;
+        document.getElementById('bom_modal_product_label').innerText = "For Finished Good: " + desc;
+        document.getElementById('bomModal').classList.remove('hidden');
+        document.getElementById('bom_search_input').value = '';
+        document.getElementById('bom_add_qty').value = '1';
+        selectedComponentId = null;
+        loadBomList();
+    }
+
+    function closeBomModal() {
+        document.getElementById('bomModal').classList.add('hidden');
+        // Reset calculator
+        document.getElementById('bom_calculator_panel').classList.add('hidden');
+        document.getElementById('calc_batch_size').value = '';
+        document.getElementById('calc_total_req').value = '';
+    }
+
+    // === Batch Calculator Logic ===
+    function toggleBomCalculator() {
+        const panel = document.getElementById('bom_calculator_panel');
+        panel.classList.toggle('hidden');
+    }
+
+    function updateCalcLabel() {
+        const useWeight = document.getElementById('calc_use_weight').checked;
+        const label = document.getElementById('calc_req_label');
+        const info = document.getElementById('calc_conversion_info');
+
+        if (useWeight && selectedComponentData) {
+            if (selectedComponentData.unit_weight > 0) {
+                label.innerText = `Total Weight Required (kg)`;
+                info.innerText = `Converting: ${selectedComponentData.unit_weight}kg = 1 ${selectedComponentData.uom}`;
+            } else if (selectedComponentData.unit_volume > 0) {
+                label.innerText = `Total Volume Required (L)`;
+                info.innerText = `Converting: ${selectedComponentData.unit_volume}L = 1 ${selectedComponentData.uom}`;
+            } else {
+                // 如果没有设置重量/体积，回退
+                document.getElementById('calc_use_weight').checked = false;
+                alert("This component has no weight/volume set in Product details.");
+            }
+        } else {
+            label.innerText = `Total Qty Required (${selectedComponentData ? selectedComponentData.uom : 'Units'})`;
+            info.innerText = "";
+        }
+    }
+
+    function runBomCalculation() {
+        const batchSize = parseFloat(document.getElementById('calc_batch_size').value);
+        let totalReq = parseFloat(document.getElementById('calc_total_req').value); // 原始输入值(可能是重量或体积)
+        const useWeight = document.getElementById('calc_use_weight').checked;
+
+        const resultDisplay = document.getElementById('calc_result_display');
+        const mainInput = document.getElementById('bom_add_qty');
+
+        // 新增 UI 元素
+        const intermediateRow = document.getElementById('calc_intermediate_row');
+        const intermediateVal = document.getElementById('calc_intermediate_val');
+        const intermediateUnit = document.getElementById('calc_intermediate_unit');
+
+        if (batchSize > 0 && totalReq >= 0) {
+
+            // === 1. 计算中间值 (Weight per FG) ===
+            // 仅仅是: 总重量 / 生产数量
+            const weightPerFg = totalReq / batchSize;
+
+            if (useWeight && selectedComponentData) {
+                // 显示中间行
+                intermediateRow.classList.remove('hidden');
+                intermediateVal.innerText = parseFloat(weightPerFg.toFixed(6)); // 格式化显示
+
+                // 设置单位标签
+                if (selectedComponentData.unit_weight > 0) intermediateUnit.innerText = 'kg';
+                else if (selectedComponentData.unit_volume > 0) intermediateUnit.innerText = 'L';
+                else intermediateUnit.innerText = '';
+
+                // === 2. 转换逻辑 (为最终结果做准备) ===
+                // 将 totalReq 从“重量”转换为“库存单位数量”
+                if (selectedComponentData.unit_weight > 0) {
+                    totalReq = totalReq / selectedComponentData.unit_weight;
+                } else if (selectedComponentData.unit_volume > 0) {
+                    totalReq = totalReq / selectedComponentData.unit_volume;
+                }
+            } else {
+                // 如果没勾选“按重量计算”，隐藏中间行，直接显示结果
+                intermediateRow.classList.add('hidden');
+            }
+
+            // === 3. 计算最终结果 (Result per unit in Inventory UOM) ===
+            const perUnit = totalReq / batchSize;
+            const formatted = parseFloat(perUnit.toFixed(6));
+
+            resultDisplay.innerText = formatted;
+            mainInput.value = formatted;
+        } else {
+            resultDisplay.innerText = "0";
+            if(intermediateRow) intermediateRow.classList.add('hidden');
+        }
+    }
+
+    // === Load List ===
+    async function loadBomList() {
+        const tbody = document.getElementById('bom_list_body');
+        const emptyState = document.getElementById('bom_empty_state');
+        tbody.innerHTML = '<tr><td colspan="3" class="text-center py-4 text-gray-400">Loading...</td></tr>';
+
+        try {
+            const res = await fetch(`/inventory/api/bom/list/${currentBomProductId}/`);
+            const json = await res.json();
+
+            tbody.innerHTML = '';
+            if (json.status === 'ok' && json.data.length > 0) {
+                emptyState.classList.add('hidden');
+                json.data.forEach(item => {
+                    const tr = document.createElement('tr');
+                    tr.innerHTML = `
+                        <td class="px-3 py-3 whitespace-nowrap">
+                            <div class="text-sm font-medium text-gray-900">${item.component_sku}</div>
+                            <div class="text-xs text-gray-500 truncate max-w-[200px]" title="${item.component_name}">${item.component_name}</div>
+                        </td>
+                        <td class="px-3 py-3 whitespace-nowrap text-right">
+                            <input type="number"
+                                   value="${item.quantity}"
+                                   step="any"
+                                   class="w-20 text-right border-gray-200 rounded text-sm focus:ring-indigo-500 focus:border-indigo-500"
+                                   onchange="updateBomQuantity(${item.id}, this.value)">
+                            <span class="text-xs text-gray-500 ml-1">${item.component_uom}</span>
+                        </td>
+                        <td class="px-3 py-3 whitespace-nowrap text-center">
+                            <button onclick="deleteBomItem(${item.id})" class="text-red-400 hover:text-red-600">
+                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                            </button>
+                        </td>
+                    `;
+                    tbody.appendChild(tr);
+                });
+            } else {
+                emptyState.classList.remove('hidden');
+            }
+        } catch(e) { console.error(e); }
+    }
+
+    // === Search Components ===
+    function debounceBomSearch() {
+        clearTimeout(bomSearchTimer);
+        bomSearchTimer = setTimeout(searchBomComponents, 300);
+    }
+
+    async function searchBomComponents() {
+        const query = document.getElementById('bom_search_input').value;
+        const resultsDiv = document.getElementById('bom_search_results');
+
+        if (query.length < 2) {
+            resultsDiv.classList.add('hidden');
+            return;
+        }
+
+        try {
+            const res = await fetch(`/inventory/api/product/search-components/?q=${encodeURIComponent(query)}`);
+            const json = await res.json();
+
+            resultsDiv.innerHTML = '';
+            if (json.results && json.results.length > 0) {
+                json.results.forEach(prod => {
+                    const div = document.createElement('div');
+                    div.className = "px-4 py-2 hover:bg-indigo-50 cursor-pointer border-b border-gray-100 last:border-0";
+                    div.innerHTML = `
+                        <div class="text-sm font-bold text-gray-800">${prod.sku}</div>
+                        <div class="text-xs text-gray-500">${prod.name}</div>
+                    `;
+                    div.onclick = () => selectBomComponent(prod);
+                    resultsDiv.appendChild(div);
+                });
+                resultsDiv.classList.remove('hidden');
+            } else {
+                resultsDiv.innerHTML = '<div class="px-4 py-2 text-sm text-gray-500">No matching components found</div>';
+                resultsDiv.classList.remove('hidden');
+            }
+        } catch(e) { console.error(e); }
+    }
+
+    function selectBomComponent(prod) {
+        selectedComponentId = prod.id;
+        selectedComponentData = prod; // ✅ 保存完整的原料数据(含重量/体积)
+
+        // 显示选中原料的详细信息，方便用户确认
+        let infoText = prod.sku;
+        if (prod.unit_weight > 0) infoText += ` (${prod.unit_weight}kg/${prod.uom})`;
+        else if (prod.unit_volume > 0) infoText += ` (${prod.unit_volume}L/${prod.uom})`;
+
+        document.getElementById('bom_search_input').value = infoText;
+        document.getElementById('bom_search_results').classList.add('hidden');
+
+        const uomSpan = document.getElementById('bom_add_uom');
+        if (uomSpan) {
+            // 优先显示 prod.uom (例如 'KG', 'L', 'EA')
+            // 如果后端有传回 unit_weight/volume，也可以考虑组合显示，但简单的 UOM 最直观
+            uomSpan.innerText = prod.uom || 'Unit';
+
+            // 可选：高亮一下，提醒用户单位已变更
+            uomSpan.classList.add('bg-blue-50', 'text-blue-600');
+            setTimeout(() => uomSpan.classList.remove('bg-blue-50', 'text-blue-600'), 500);
+        }
+
+        // 如果有重量/体积，自动显示计算器并勾选转换选项（提升体验）
+        if (prod.unit_weight > 0 || prod.unit_volume > 0) {
+            document.getElementById('bom_calculator_panel').classList.remove('hidden');
+            document.getElementById('calc_use_weight').checked = true;
+            updateCalcLabel(); // 更新显示的单位提示
+        }
+    }
+
+    // === Add / Update / Delete ===
+    async function addBomComponent() {
+        // 1. 获取输入值，如果为空则默认为 1
+        let qtyInput = document.getElementById('bom_add_qty').value;
+        const qty = qtyInput && parseFloat(qtyInput) > 0 ? qtyInput : "1";
+
+        // 2. 检查是否选择了组件
+        if (!selectedComponentId) {
+            alert("Please search and CLICK a component from the dropdown list first.");
+            // 聚焦到搜索框，提示用户
+            document.getElementById('bom_search_input').focus();
+            return;
+        }
+
+        try {
+            const res = await fetch("{% url 'inventory:bom_add' %}", {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    // 如果视图是 csrf_exempt，其实可以不传这个，但留着也无妨，确保它有值
+                    'X-CSRFToken': '{{ csrf_token|default:"" }}'
+                },
+                body: JSON.stringify({
+                    product_id: currentBomProductId,
+                    component_id: selectedComponentId,
+                    quantity: qty
+                })
+            });
+            const json = await res.json();
+            if(json.status === 'ok') {
+                // Success: Reset UI
+                document.getElementById('bom_search_input').value = '';
+                document.getElementById('bom_add_qty').value = '1';
+
+                const uomSpan = document.getElementById('bom_add_uom');
+                if(uomSpan) uomSpan.innerText = "-";
+
+                selectedComponentId = null; // Reset
+                loadBomList();
+            } else {
+                alert("Error adding component: " + json.message);
+            }
+        } catch(e) {
+            console.error(e);
+            alert("Network error occurred.");
+        }
+    }
+
+    async function updateBomQuantity(bomId, newQty) {
+        try {
+            await fetch(`/inventory/api/bom/update/${bomId}/`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': '{{ csrf_token }}'
+                },
+                body: JSON.stringify({ quantity: newQty })
+            });
+            // Optional: Show a subtle toast or flash, but no reload needed implies smoother UX
+        } catch(e) { console.error(e); }
+    }
+
+    async function deleteBomItem(bomId) {
+        if(!confirm("Remove this component from recipe?")) return;
+        try {
+            await fetch(`/inventory/api/bom/delete/${bomId}/`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': '{{ csrf_token }}'
+                }
+            });
+            loadBomList();
+        } catch(e) { console.error(e); }
+    }
+
+    // Close search dropdown on outside click
+    document.addEventListener('click', function(e) {
+        const container = document.getElementById('bom_search_input').parentElement;
+        if (!container.contains(e.target)) {
+            document.getElementById('bom_search_results').classList.add('hidden');
+        }
+    });
+
+</script>
+
+<div id="manageCategoriesModal" class="hidden fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50" onclick="if(event.target === this) closeManageCategoriesModal()">
+    <div class="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white">
+        <div class="flex justify-between items-center mb-4 border-b pb-2">
+            <h3 class="text-lg leading-6 font-medium text-gray-900">Manage Categories</h3>
+            <button onclick="closeManageCategoriesModal()" class="text-gray-400 hover:text-gray-600">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+            </button>
+        </div>
+        <div class="mt-2 max-h-96 overflow-y-auto" id="manage_category_list">
+            </div>
+        <div class="mt-4 pt-3 border-t text-right">
+            <button onclick="closeManageCategoriesModal()" class="px-4 py-2 bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200">Close</button>
+        </div>
+    </div>
+</div>
+
+
+<div id="bomModal" class="hidden fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
+    <div class="relative top-10 mx-auto p-0 border w-[600px] shadow-lg rounded-lg bg-white flex flex-col max-h-[90vh]">
+        <div class="px-6 py-4 border-b border-gray-100 flex justify-between items-center bg-gray-50 rounded-t-lg">
+            <div>
+                <h3 class="text-lg font-bold text-gray-800">Recipe Management</h3>
+                <p class="text-xs text-gray-500 mt-0.5" id="bom_modal_product_label">Product SKU</p>
+            </div>
+            <button onclick="closeBomModal()" class="text-gray-400 hover:text-gray-600">
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+            </button>
+        </div>
+
+        <div class="px-6 py-4 bg-white border-b border-gray-100">
+             <label class="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Add Component</label>
+             <div class="flex space-x-2 relative">
+                 <div class="flex-1 relative">
+                     <input type="text" id="bom_search_input"
+                            class="w-full py-2 border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 text-sm"
+                            placeholder="Search Raw Material or Packaging..."
+                            autocomplete="off"
+                            oninput="debounceBomSearch()">
+
+                     <div id="bom_search_results" class="hidden absolute left-0 right-0 top-full mt-1 bg-white border border-gray-200 rounded-md shadow-lg z-50 max-h-60 overflow-y-auto">
+                        </div>
+                 </div>
+                 <div class="flex items-center">
+                    <input type="number" id="bom_add_qty" value="1" step="0.0001" min="0" class="w-30 py-2 px-2 border-gray-300 rounded-l-md shadow-sm text-sm focus:ring-indigo-500 focus:border-indigo-500" placeholder="Qty">
+                    <span id="bom_add_uom" class="inline-flex items-center px-3 py-2 rounded-r-md bg-gray-50 text-gray-500 text-sm">
+                        -
+                    </span>
+                </div>
+                <button onclick="addBomComponent()" class="ml-2 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-md text-sm font-medium shadow-sm transition">
+                    Add
+                </button>
+             </div>
+
+             <div class="mt-2 text-right">
+                 <button onclick="toggleBomCalculator()" class="text-xs text-blue-500 hover:text-blue-700 underline focus:outline-none">
+                     Calculate from Batch
+                 </button>
+             </div>
+
+             <div id="bom_calculator_panel" class="hidden mt-2 p-3 bg-blue-50 rounded-md border border-blue-100 grid grid-cols-2 gap-3 items-start transition-all">
+                 <div class="col-span-2 flex items-center mb-1">
+                     <input type="checkbox" id="calc_use_weight" class="rounded text-blue-600 focus:ring-blue-500 mr-2 h-4 w-4" onchange="updateCalcLabel(); runBomCalculation();">
+                     <label for="calc_use_weight" class="text-xs font-bold text-gray-700 cursor-pointer select-none">
+                         Calculate by Weight/Volume (Auto-convert units)
+                     </label>
+                 </div>
+
+                 <div>
+                     <label class="block text-[10px] text-gray-500 uppercase font-bold mb-1">Batch Size (FG Qty)</label>
+                     <input type="number" id="calc_batch_size" placeholder="e.g. 1000" class="w-full px-2 text-xs border-gray-300 rounded focus:ring-blue-500 focus:border-blue-500 py-1.5" oninput="runBomCalculation()">
+                 </div>
+
+                 <div>
+                     <label class="block text-[10px] text-gray-500 uppercase font-bold mb-1" id="calc_req_label">Total Component Req.</label>
+                     <input type="number" id="calc_total_req" placeholder="e.g. 13" class="w-full text-xs border-gray-300 rounded focus:ring-blue-500 focus:border-blue-500 py-1.5" oninput="runBomCalculation()">
+                 </div>
+
+                 <div id="calc_intermediate_row" class="col-span-2 hidden text-right -mb-1">
+                    <span class="text-[14px] text-gray-500">Weight (Per F.G.):</span>
+                    <span id="calc_intermediate_val" class="text-xs font-bold text-gray-700 ml-1">0</span>
+                    <span id="calc_intermediate_unit" class="text-[10px] text-gray-500">kg</span>
+                 </div>
+
+                 <div class="col-span-2 text-[14px] text-blue-600 border-t border-blue-200 pt-2 mt-1 flex justify-between items-center">
+                     <span>Calculation Result (Per UOM): <span id="calc_result_display" class="font-bold text-lg ml-1">0</span></span>
+                     <span id="calc_conversion_info" class="text-gray-400 italic text-[9px]"></span>
+                 </div>
+             </div>
+        </div>
+
+        <div class="flex-1 overflow-y-auto px-6 py-2">
+            <table class="min-w-full divide-y divide-gray-200">
+                <thead class="bg-gray-50 sticky top-0">
+                    <tr>
+                        <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Component</th>
+                        <th class="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Qty Req.</th>
+                        <th class="px-3 py-2 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Action</th>
+                    </tr>
+                </thead>
+                <tbody id="bom_list_body" class="bg-white divide-y divide-gray-200">
+                    </tbody>
+            </table>
+
+            <div id="bom_empty_state" class="hidden py-8 text-center text-gray-400">
+                <p>No components in this recipe yet.</p>
+            </div>
+        </div>
+
+        <div class="px-6 py-4 border-t border-gray-100 bg-gray-50 rounded-b-lg text-right">
+            <button onclick="closeBomModal()" class="px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50 text-sm font-medium">Done</button>
+        </div>
+    </div>
+</div>

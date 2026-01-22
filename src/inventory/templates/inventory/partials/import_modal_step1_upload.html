@@ -1,0 +1,28 @@
+<div class="bg-white px-4 pb-4 pt-5 sm:p-6 sm:pb-4">
+    <h3 class="text-lg font-semibold leading-6 text-gray-900 mb-4">Import Inventory Data</h3>
+
+    <form id="uploadForm" data-url="{% url 'inventory:import_process' %}" enctype="multipart/form-data">
+        {% csrf_token %}
+
+        <label for="file_upload" class="relative flex flex-col items-center justify-center w-full h-64 rounded-lg border-2 border-dashed border-gray-300 bg-gray-50 hover:bg-blue-50 hover:border-blue-500 transition-colors cursor-pointer group">
+
+            <div id="upload-placeholder-text" class="flex flex-col items-center justify-center pt-5 pb-6">
+                <svg class="w-10 h-10 mb-3 text-gray-400 group-hover:text-blue-500 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path></svg>
+                <p class="mb-2 text-sm text-gray-500 group-hover:text-blue-600"><span class="font-semibold">Click to upload</span> or drag and drop</p>
+                <p class="text-xs text-gray-500">XLSX or PDF (MAX. 10MB)</p>
+            </div>
+
+            <div id="file-name-display" class="hidden absolute bottom-4 px-4 py-2 bg-blue-100 text-blue-700 text-sm font-semibold rounded-full shadow-sm">
+                </div>
+
+            <input id="file_upload" name="file_upload" type="file" class="hidden" accept=".xlsx,.xls,.pdf" onchange="updateFileName(this)" required />
+        </label>
+
+    </form>
+    <div id="uploadError" class="text-red-500 text-sm mt-2 hidden text-center"></div>
+</div>
+
+<div class="bg-gray-50 px-4 py-3 sm:flex sm:flex-row-reverse sm:px-6">
+    <button id="uploadBtn" type="button" onclick="submitUpload()" class="inline-flex w-full justify-center rounded-md bg-blue-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-500 sm:ml-3 sm:w-auto">Analyze File</button>
+    <button type="button" onclick="closeImportModal()" class="mt-3 inline-flex w-full justify-center rounded-md bg-white px-3 py-2 text-sm font-semibold text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50 sm:mt-0 sm:w-auto">Cancel</button>
+</div>

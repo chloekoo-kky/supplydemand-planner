@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Supply Planner{% endblock %}</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+        /* 解决 sticky header 覆盖问题 */
+        .sticky-header { position: sticky; top: 0; z-index: 40; }
+    </style>
+</head>
+<body class="bg-gray-50 text-gray-800 h-screen flex overflow-hidden">
+
+    {% include 'components/sidebar.html' %}
+
+    <div class="flex-1 flex flex-col overflow-hidden relative">
+
+        {% include 'components/navbar.html' %}
+
+        <main id="main-content-area" class="flex-1 overflow-y-auto p-8">
+            {% if messages %}
+                <div class="mb-6 space-y-2">
+                    {% for message in messages %}
+                        <div class="p-4 rounded-lg text-sm font-medium
+                            {% if message.tags == 'error' %}bg-red-50 text-red-700 border border-red-200
+                            {% elif message.tags == 'success' %}bg-green-50 text-green-700 border border-green-200
+                            {% elif message.tags == 'warning' %}bg-yellow-50 text-yellow-700 border border-yellow-200
+                            {% else %}bg-blue-50 text-blue-700 border border-blue-200{% endif %}">
+                            {{ message }}
+                        </div>
+                    {% endfor %}
+                </div>
+            {% endif %}
+
+            {% block content %}{% endblock %}
+        </main>
+    </div>
+
+    <div id="genericModal" class="relative z-50 hidden" aria-labelledby="modal-title" role="dialog" aria-modal="true">
+        <div class="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity"></div>
+
+        <div class="fixed inset-0 z-10 w-screen overflow-y-auto" onclick="closeImportModal()">
+            <div class="flex min-h-full items-end justify-center p-4 text-center sm:items-center sm:p-0">
+
+                <div class="relative transform overflow-hidden rounded-lg bg-white text-left shadow-xl transition-all sm:my-8 sm:w-full sm:max-w-2xl" onclick="event.stopPropagation()">
+                    <div id="modalContent"></div>
+                </div>
+
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 1. 打开 Modal
+        function openImportModal() {
+            const modal = document.getElementById('genericModal');
+            const content = document.getElementById('modalContent');
+
+            modal.classList.remove('hidden');
+            content.innerHTML = '<div class="p-10 text-center"><span class="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900"></span><p class="mt-2 text-gray-500">Loading...</p></div>';
+
+            fetch("{% url 'inventory:import_load' %}")
+                .then(response => response.text())
+                .then(html => {
+                    content.innerHTML = html;
+                })
+                .catch(err => {
+                    content.innerHTML = '<div class="p-4 text-red-500">Error loading modal.</div>';
+                });
+        }
+
+        // 2. 关闭 Modal
+        function closeImportModal() {
+            document.getElementById('genericModal').classList.add('hidden');
+        }
+
+        // 3. 提交上传 (Step 1 -> Step 2)
+        function submitUpload() {
+            const form = document.getElementById('uploadForm');
+            const formData = new FormData(form);
+            const btn = document.querySelector('#uploadBtn');
+            const errorDiv = document.getElementById('uploadError');
+
+            // 重置错误信息
+            if(errorDiv) {
+                errorDiv.classList.add('hidden');
+                errorDiv.innerText = '';
+            }
+
+            // 按钮进入 Loading 状态
+            if(btn) {
+                btn.disabled = true;
+                btn.innerHTML = 'Analyzing...';
+            }
+
+            // 获取 URL (从 form 的 data-url 属性)
+            const url = form.getAttribute('data-url');
+            // 获取 CSRF Token (从 form 内部的 hidden input)
+            const csrfToken = form.querySelector('[name=csrfmiddlewaretoken]').value;
+
+            fetch(url, {
+                method: 'POST',
+                body: formData,
+                headers: {'X-CSRFToken': csrfToken}
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) {
+                    // 成功：直接替换 Modal 内容为第二步的 HTML
+                    document.getElementById('modalContent').innerHTML = data.html;
+                } else {
+                    // 失败：显示错误
+                    if(errorDiv) {
+                        errorDiv.innerText = data.message;
+                        errorDiv.classList.remove('hidden');
+                    }
+                    if(btn) {
+                        btn.disabled = false;
+                        btn.innerHTML = 'Analyze File';
+                    }
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                if(errorDiv) {
+                    errorDiv.innerText = "Network or Server Error";
+                    errorDiv.classList.remove('hidden');
+                }
+                if(btn) {
+                    btn.disabled = false;
+                    btn.innerHTML = 'Analyze File';
+                }
+            });
+        }
+
+        function updateFileName(input) {
+            const fileNameContainer = document.getElementById('file-name-display');
+            const defaultText = document.getElementById('upload-placeholder-text');
+
+            if (input.files && input.files.length > 0) {
+                const name = input.files[0].name;
+                // 显示文件名，加粗并变蓝
+                fileNameContainer.textContent = "Selected: " + name;
+                fileNameContainer.classList.remove('hidden');
+
+                // 可选：隐藏原来的提示文字，或者保留
+                // defaultText.classList.add('hidden');
+            } else {
+                fileNameContainer.classList.add('hidden');
+                fileNameContainer.textContent = "";
+            }
+        }
+        // 4. 最终确认 (Step 2 -> Finish)
+        function finalizeImport() {
+            const form = document.getElementById('confirmForm');
+            const formData = new FormData(form);
+            const url = form.getAttribute('data-url');
+            // 注意：Step 2 的 HTML 里没写 {% csrf_token %}，我们需要手动传或者在 form 里加上
+            // 这里最简单的方法是复用 Cookie 里的 token，或者假设 form 里没有 token input
+
+            // 为了稳妥，我们在 fetch headers 里自动带上 CSRF (从 cookie 取)
+            function getCookie(name) {
+                let cookieValue = null;
+                if (document.cookie && document.cookie !== '') {
+                    const cookies = document.cookie.split(';');
+                    for (let i = 0; i < cookies.length; i++) {
+                        const cookie = cookies[i].trim();
+                        if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                            cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                            break;
+                        }
+                    }
+                }
+                return cookieValue;
+            }
+            const csrftoken = getCookie('csrftoken');
+
+            fetch(url, {
+                method: 'POST',
+                body: formData,
+                headers: {'X-CSRFToken': csrftoken}
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) {
+                    alert(data.message);
+                    closeImportModal();
+                    location.reload(); // 刷新页面显示新数据
+                } else {
+                    alert('Error: ' + data.message);
+                }
+            })
+            .catch(error => {
+                alert('Unexpected error occurred');
+                console.error(error);
+            });
+        }
+
+        // src/templates/base.html
+
+        document.addEventListener('DOMContentLoaded', function() {
+            const mainContent = document.getElementById('main-content-area');
+            const sidebarLinks = document.querySelectorAll('.ajax-link');
+            const headerTitle = document.querySelector('header h1');
+
+            if (!mainContent) {
+                console.error("Error: Element with id 'main-content-area' not found in base.html!");
+                return;
+            }
+
+            // 通用高亮切换函数
+            function setActiveLink(clickedLink) {
+                // 1. 重置所有链接样式 (变为灰暗色)
+                sidebarLinks.forEach(link => {
+                    link.classList.remove('bg-blue-600', 'text-white');
+                    link.classList.add('text-slate-400', 'hover:bg-slate-800', 'hover:text-white');
+                });
+
+                // 2. 高亮当前链接 (变为蓝色)
+                clickedLink.classList.remove('text-slate-400', 'hover:bg-slate-800', 'hover:text-white');
+                clickedLink.classList.add('bg-blue-600', 'text-white');
+            }
+
+            // 执行 HTML 字符串中的 <script> 标签
+            function executeScripts(container) {
+                const scripts = container.querySelectorAll('script');
+                scripts.forEach(oldScript => {
+                    const newScript = document.createElement('script');
+                    // 复制属性
+                    Array.from(oldScript.attributes).forEach(attr => newScript.setAttribute(attr.name, attr.value));
+                    // 复制内容
+                    newScript.appendChild(document.createTextNode(oldScript.innerHTML));
+                    // 替换并执行
+                    oldScript.parentNode.replaceChild(newScript, oldScript);
+                });
+            }
+
+            sidebarLinks.forEach(link => {
+                link.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    const url = this.href;
+
+                    // 视觉反馈
+                    setActiveLink(this);
+
+                    fetch(url, {
+                        headers: { 'X-Requested-With': 'XMLHttpRequest' }
+                    })
+                    .then(response => {
+                        if (!response.ok) throw new Error('Network response was not ok');
+                        return response.text();
+                    })
+                    .then(html => {
+                        // 核心修复：这里现在一定能找到 mainContent 了
+                        mainContent.innerHTML = html;
+
+                        // 执行新页面里的 JS
+                        executeScripts(mainContent);
+
+                        window.history.pushState({path: url}, '', url);
+                    })
+                    .catch(err => console.error('Load failed', err));
+                });
+            });
+
+            // 处理浏览器“后退”按钮 (简单的优化)
+            window.addEventListener('popstate', function() {
+                // 完美方案是这里也 fetch，但为了简单，重新加载也能接受
+                location.reload();
+            });
+        });
+    </script>
+</body>
+</html>

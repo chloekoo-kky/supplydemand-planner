@@ -1,0 +1,26 @@
+# --- 核心框架 ---
+Django>=5.0,<5.2   # 建议直接上 5.x，利用其 GeneratedField 处理库存计算
+psycopg2-binary    # 数据库驱动
+gunicorn           # 生产环境服务器
+
+# --- 数据处理 (核心) ---
+pandas             # 处理 Demand Planning 和 MRP 运算 (必备)
+numpy              # Pandas 的依赖
+openpyxl           # 读写 Excel (马来西亚传统工厂依赖 Excel 导入导出)
+weasyprint         # 生成 PDF (PO单, Invoice, 关税申报单)
+
+# --- 异步任务 ---
+celery             # 处理耗时的 MRP 运算
+redis              # Celery 的 Broker
+
+# --- API 与 工具 ---
+djangorestframework # 前后端分离或提供 API 给外部
+django-filter       # 强大的筛选功能 (按日期、SKU 筛选)
+django-extensions   # 开发神器 (shell_plus, graph_models)
+python-dotenv       # 环境变量管理
+
+rapidfuzz
+pdfplumber
+weasyprint
+
+django-modeladmin-reorder
