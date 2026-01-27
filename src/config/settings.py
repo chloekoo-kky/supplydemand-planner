@@ -42,7 +42,7 @@ INSTALLED_APPS = [
     'core',
     'inventory',
     'production',
-
+    'forecast',
 ]
 
 MIDDLEWARE = [

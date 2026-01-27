@@ -55,6 +55,7 @@ class Product(models.Model):
         related_name='products',
         help_text="供应商"
     )
+
     cost_price = models.DecimalField(max_digits=10, decimal_places=2, default=0, help_text="成本价")
 
     group = models.ForeignKey(
@@ -66,7 +67,12 @@ class Product(models.Model):
     )
     sort_order = models.PositiveIntegerField(default=0)
 
-    # --- 核心计划参数 (这些通常是 Excel 里写死的，现在存进数据库) ---
+    estimated_daily_usage = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        default=0,
+        help_text="预估日均消耗量 (用于计算库存覆盖天数)"
+    )
     safety_stock_days = models.IntegerField(default=14, help_text="目标安全库存天数")
     moq = models.DecimalField(max_digits=10, decimal_places=2, default=0, help_text="最小起订量 (MOQ)")
     lead_time_days = models.IntegerField(default=30, help_text="采购/生产前置时间 (Lead Time)")

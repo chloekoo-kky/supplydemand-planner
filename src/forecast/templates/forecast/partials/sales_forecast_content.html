@@ -1,0 +1,394 @@
+<div class="w-full p-6" id="forecast-content-wrapper">
+    <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
+        <div>
+            <nav class="flex mb-1" aria-label="Breadcrumb">
+                <ol class="inline-flex items-center space-x-1 md:space-x-3">
+                    <li class="inline-flex items-center">
+                        <a href="{% url 'forecast:dashboard' %}" class="ajax-link text-gray-500 hover:text-gray-900 font-medium">Dashboard</a>
+                    </li>
+                    <li>
+                        <div class="flex items-center">
+                            <svg class="w-3 h-3 text-gray-400 mx-1" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 6 10">
+                                <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m1 9 4-4-4-4"/>
+                            </svg>
+                            <span class="text-gray-900 font-medium ml-1">Sales Forecast</span>
+                        </div>
+                    </li>
+                </ol>
+            </nav>
+            <h2 class="text-2xl font-bold text-gray-900">Sales Forecast Data</h2>
+            <p class="text-gray-500 text-sm">Consolidated view by Product & Period.</p>
+        </div>
+
+        <div class="flex flex-col sm:flex-row gap-3 items-end sm:items-center">
+            <div class="relative">
+                <input type="text"
+                       id="searchInput"
+                       value="{{ current_query }}"
+                       placeholder="Search SKU, Product or Country..."
+                       class="w-64 pl-10 pr-4 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 text-sm"
+                       onkeydown="if(event.key === 'Enter') window.doSearch(this.value)">
+                <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                    <i class="bi bi-search text-gray-400"></i>
+                </div>
+                {% if current_query %}
+                <button onclick="window.doSearch('')" class="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-600">
+                    <i class="bi bi-x-circle-fill"></i>
+                </button>
+                {% endif %}
+            </div>
+
+            <div class="flex space-x-2">
+                <button type="button" onclick="window.openForecastImportModal('FORECAST')" class="px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-md shadow-sm hover:bg-gray-50 flex items-center text-sm font-medium">
+                    <i class="bi bi-graph-up-arrow mr-2 text-blue-600"></i> Import Forecast
+                </button>
+                <button type="button" onclick="window.openForecastImportModal('ACTUAL')" class="px-4 py-2 bg-blue-600 text-white rounded-md shadow hover:bg-blue-700 flex items-center text-sm font-medium">
+                    <i class="bi bi-cart-check mr-2"></i> Import Actuals
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <div class="bg-white shadow rounded-lg overflow-hidden border border-gray-200">
+        <div class="overflow-x-auto">
+            <table class="min-w-full text-left text-sm whitespace-nowrap">
+                <thead class="bg-gray-50 text-gray-600 uppercase tracking-wider border-b border-gray-200">
+                    <tr>
+                        <th class="px-6 py-3 font-semibold w-12 text-center">
+                            <span class="sr-only">Expand</span>
+                        </th>
+
+                        <th class="px-6 py-3 font-semibold cursor-pointer hover:bg-gray-100 transition-colors" onclick="window.doSort('{{ current_sort }}', 'date')">
+                            <div class="flex items-center space-x-1">
+                                <span>Period</span>
+                                {% if current_sort == 'date_desc' %} <i class="bi bi-sort-down-alt text-blue-600"></i>
+                                {% elif current_sort == 'date_asc' %} <i class="bi bi-sort-up text-blue-600"></i>
+                                {% else %} <i class="bi bi-arrow-down-up text-gray-300 text-xs"></i> {% endif %}
+                            </div>
+                        </th>
+                        <th class="px-6 py-3 font-semibold cursor-pointer hover:bg-gray-100 transition-colors" onclick="window.doSort('{{ current_sort }}', 'sku')">
+                            <div class="flex items-center space-x-1">
+                                <span>SKU</span>
+                                {% if current_sort == 'sku_asc' %} <i class="bi bi-sort-alpha-down text-blue-600"></i>
+                                {% elif current_sort == 'sku_desc' %} <i class="bi bi-sort-alpha-down-alt text-blue-600"></i>
+                                {% else %} <i class="bi bi-arrow-down-up text-gray-300 text-xs"></i> {% endif %}
+                            </div>
+                        </th>
+                        <th class="px-6 py-3 font-semibold">Product Name</th>
+                        <th class="px-6 py-3 text-right font-semibold bg-blue-50 text-blue-800 cursor-pointer hover:bg-blue-100 transition-colors" onclick="window.doSort('{{ current_sort }}', 'forecast')">
+                            <div class="flex items-center justify-end space-x-1">
+                                <span>Total Forecast</span>
+                                {% if current_sort == 'forecast_desc' %}<i class="bi bi-sort-numeric-down-alt text-blue-600"></i>
+                                {% elif current_sort == 'forecast_asc' %}<i class="bi bi-sort-numeric-down text-blue-600"></i>
+                                {% else %}<i class="bi bi-arrow-down-up text-blue-300 text-xs"></i>{% endif %}
+                            </div>
+                        </th>
+                        <th class="px-6 py-3 text-right font-semibold bg-purple-50 text-purple-800 cursor-pointer hover:bg-purple-100 transition-colors" onclick="window.doSort('{{ current_sort }}', 'actual')">
+                            <div class="flex items-center justify-end space-x-1">
+                                <span>Total Actual</span>
+                                {% if current_sort == 'actual_desc' %}<i class="bi bi-sort-numeric-down-alt text-purple-600"></i>
+                                {% elif current_sort == 'actual_asc' %}<i class="bi bi-sort-numeric-down text-purple-600"></i>
+                                {% else %}<i class="bi bi-arrow-down-up text-purple-300 text-xs"></i>{% endif %}
+                            </div>
+                        </th>
+                        <th class="px-6 py-3 text-center font-semibold">Details</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-gray-100">
+                    {% for group in grouped_demands %}
+                    <tr class="hover:bg-gray-50 transition-colors cursor-pointer group select-none" onclick="window.toggleDetails('row-{{ forloop.counter }}')">
+                        <td class="px-6 py-4 text-center text-gray-400 group-hover:text-blue-600 transition-colors">
+                            <i id="icon-row-{{ forloop.counter }}" class="bi bi-chevron-right transition-transform duration-200 inline-block"></i>
+                        </td>
+                        <td class="px-6 py-4 font-medium text-gray-900">{{ group.period|date:"Y-m" }}</td>
+                        <td class="px-6 py-4 font-mono text-gray-600 font-bold">
+                            {% if current_query and current_query|lower in group.product.sku|lower %}
+                                <span class="bg-yellow-200">{{ group.product.sku }}</span>
+                            {% else %}
+                                {{ group.product.sku }}
+                            {% endif %}
+                        </td>
+                        <td class="px-6 py-4 text-gray-500">{{ group.product.description|truncatechars:30 }}</td>
+                        <td class="px-6 py-4 text-right font-bold text-gray-900 bg-blue-50/30">{{ group.total_forecast|floatformat:0 }}</td>
+                        <td class="px-6 py-4 text-right font-bold text-gray-900 bg-purple-50/30">{{ group.total_actual|floatformat:0 }}</td>
+                        <td class="px-6 py-4 text-center text-xs text-gray-400">
+                            {% if group.details %}
+                            <span class="bg-gray-100 text-gray-600 px-2 py-1 rounded-full">{{ group.details|length }}</span>
+                            {% else %} - {% endif %}
+                        </td>
+                    </tr>
+
+                    <tr id="row-{{ forloop.counter }}" class="hidden bg-gray-50/50">
+                        <td colspan="7" class="px-0 py-0 border-b border-gray-100">
+                            <div class="p-4 pl-20 pr-8 bg-gray-50 border-t border-gray-100 shadow-inner transition-all">
+                                <table class="w-full text-sm text-left border border-gray-200 rounded-md bg-white overflow-hidden shadow-sm">
+                                    <thead class="bg-gray-100 text-xs text-gray-500 uppercase">
+                                        <tr>
+                                            <th class="px-4 py-3">Country / Customer</th>
+                                            <th class="px-4 py-3 text-right bg-blue-50/50 text-blue-800">Forecast</th>
+                                            <th class="px-4 py-3 text-right bg-purple-50/50 text-purple-800">Actual Sales</th>
+                                            <th class="px-4 py-3 text-center">Status</th>
+                                            <th class="px-4 py-3 text-right">Action</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody class="divide-y divide-gray-100">
+                                        {% for detail in group.details %}
+                                        <tr class="hover:bg-gray-50 transition-colors">
+                                            <td class="px-4 py-3 font-medium text-gray-700 flex items-center">
+                                                <i class="bi bi-geo-alt text-gray-400 mr-2"></i>
+                                                {% if current_query and current_query|lower in detail.country|lower %}
+                                                    <span class="bg-yellow-200">{{ detail.country }}</span>
+                                                {% else %}
+                                                    {{ detail.country }}
+                                                {% endif %}
+                                            </td>
+                                            <td class="px-4 py-3 text-right text-gray-700 font-medium bg-blue-50/20">
+                                                {% if detail.forecast_qty > 0 %}{{ detail.forecast_qty|floatformat:0 }}{% else %}<span class="text-gray-300">-</span>{% endif %}
+                                            </td>
+                                            <td class="px-4 py-3 text-right text-gray-700 font-medium bg-purple-50/20">
+                                                {% if detail.actual_qty > 0 %}{{ detail.actual_qty|floatformat:0 }}{% else %}<span class="text-gray-300">-</span>{% endif %}
+                                            </td>
+                                            <td class="px-4 py-3 text-center">
+                                                {% if detail.actual_obj %}
+                                                    {% if detail.actual_obj.shipped_date %}
+                                                        <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800 border border-green-200">Shipped</span>
+                                                    {% elif detail.actual_obj.allocated_qty > 0 %}
+                                                        <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800 border border-blue-200">Allocated</span>
+                                                    {% else %}
+                                                        <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-yellow-100 text-yellow-800 border border-yellow-200">Pending</span>
+                                                    {% endif %}
+                                                {% else %}<span class="text-gray-300 text-xs">-</span>{% endif %}
+                                            </td>
+                                            <td class="px-4 py-3 text-right">
+                                                {% if detail.actual_obj and not detail.actual_obj.shipped_date %}
+                                                    <button type="button"
+                                                            onclick="window.openAllocationModal(
+                                                                '{{ detail.actual_obj.pk }}',
+                                                                '{{ detail.product.sku|escapejs }}',
+                                                                '{{ detail.actual_qty }}',
+                                                                '{{ detail.actual_obj.allocated_qty|default:0 }}',
+                                                                '{{ group.available_stock|default:0|floatformat:0 }}'
+                                                            )"
+                                                            class="{% if detail.actual_obj.allocated_qty > 0 %}text-blue-600 border-blue-200{% else %}text-purple-600 border-purple-200{% endif %} hover:bg-gray-50 border rounded px-2 py-1 text-xs font-medium transition-colors">
+                                                        {% if detail.actual_obj.allocated_qty > 0 %}
+                                                            Edit Alloc ({{ detail.actual_obj.allocated_qty|floatformat:0 }})
+                                                        {% else %}
+                                                            Allocate
+                                                        {% endif %}
+                                                    </button>
+                                                {% elif detail.actual_obj and detail.actual_obj.shipped_date %}
+                                                    <span class="text-green-600 text-xs flex justify-end items-center">
+                                                        <i class="bi bi-truck mr-1"></i> Shipped
+                                                    </span>
+                                                {% endif %}
+                                            </td>
+                                        </tr>
+                                        {% endfor %}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="7" class="px-6 py-12 text-center text-gray-500">
+                            <i class="bi bi-search text-4xl mb-3 block text-gray-300"></i>
+                            No matching records found.
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+{% include 'forecast/partials/import_demand_modal.html' %}
+
+<div id="allocationModal" class="relative z-50 hidden" aria-labelledby="modal-title" role="dialog" aria-modal="true">
+    <div class="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity"></div>
+    <div class="fixed inset-0 z-10 w-screen overflow-y-auto">
+        <div class="flex min-h-full items-end justify-center p-4 text-center sm:items-center sm:p-0">
+            <div class="relative transform overflow-hidden rounded-lg bg-white text-left shadow-xl transition-all sm:my-8 sm:w-full sm:max-w-sm">
+
+                <form method="POST" id="allocationForm">
+                    {% csrf_token %}
+                    <div class="bg-white px-4 pb-4 pt-5 sm:p-6 sm:pb-4">
+                        <div class="sm:flex sm:items-start">
+                            <div class="mx-auto flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-full bg-blue-100 sm:mx-0 sm:h-10 sm:w-10">
+                                <i class="bi bi-layers text-blue-600 text-lg"></i>
+                            </div>
+                            <div class="mt-3 text-center sm:ml-4 sm:mt-0 sm:text-left w-full">
+                                <h3 class="text-base font-semibold leading-6 text-gray-900" id="alloc-modal-title">Allocate Stock</h3>
+                                <div class="mt-2">
+                                    <p class="text-sm text-gray-500 mb-3">
+                                        Defining reserved stock for <span id="allocSku" class="font-bold"></span>.
+                                    </p>
+
+                                    <div class="mb-4 bg-blue-50 border border-blue-100 rounded-md p-3">
+                                        <div class="flex justify-between items-center">
+                                            <span class="text-xs text-blue-700 font-medium">Projected Available:</span>
+                                            <span id="allocAvailable" class="text-sm font-bold text-blue-800">0</span>
+                                        </div>
+                                        <p class="text-[10px] text-blue-500 mt-1">
+                                            (On Hand - Reserved)
+                                        </p>
+                                    </div>
+
+                                    <div class="space-y-3">
+                                        <div>
+                                            <label class="block text-xs font-medium text-gray-700">Customer Demand</label>
+                                            <input type="text" id="allocDemandQty" disabled class="mt-1 block w-full rounded-md border-gray-300 bg-gray-50 text-gray-500 sm:text-sm border p-2">
+                                        </div>
+                                        <div>
+                                            <label class="block text-xs font-medium text-gray-700">Allocate Quantity</label>
+                                            <input type="number" step="1" name="allocate_qty" id="allocInputQty" required
+                                                   class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm border p-2">
+                                            <p class="text-xs text-gray-400 mt-1">Enter 0 to release allocation.</p>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="bg-gray-50 px-4 py-3 sm:flex sm:flex-row-reverse sm:px-6">
+                        <button type="submit" class="inline-flex w-full justify-center rounded-md bg-blue-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-500 sm:ml-3 sm:w-auto">Confirm</button>
+                        <button type="button" onclick="window.closeAllocModal()" class="mt-3 inline-flex w-full justify-center rounded-md bg-white px-3 py-2 text-sm font-semibold text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50 sm:mt-0 sm:w-auto">Cancel</button>
+                    </div>
+                </form>
+
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    // 1. Rename Import Modal Opener
+    window.openForecastImportModal = function(type) {
+        if (typeof openDemandModal === 'function') {
+            openDemandModal();
+            const select = document.querySelector('select[name="demand_type"]');
+            if (select) { select.value = type; }
+        } else {
+            console.error("openDemandModal function is missing. Check import_demand_modal.html include.");
+        }
+    }
+
+    // 2. Details Toggler
+    window.toggleDetails = function(rowId) {
+        const detailRow = document.getElementById(rowId);
+        const icon = document.getElementById('icon-' + rowId);
+        if (detailRow) {
+            if (detailRow.classList.contains('hidden')) {
+                detailRow.classList.remove('hidden');
+                if (icon) icon.classList.add('rotate-90');
+            } else {
+                detailRow.classList.add('hidden');
+                if (icon) icon.classList.remove('rotate-90');
+            }
+        }
+    }
+
+    // 3. Allocation Modal Logic [Updated]
+    window.openAllocationModal = function(pk, sku, demandQty, currentAlloc, availableStock) {
+        const modal = document.getElementById('allocationModal');
+        const form = document.getElementById('allocationForm');
+
+        if (!modal || !form) {
+            console.error("Allocation Modal or Form not found.");
+            return;
+        }
+
+        form.action = `/forecast/allocate/${pk}/`;
+
+        // Update SKU Label
+        const skuLabel = document.getElementById('allocSku');
+        if (skuLabel) skuLabel.innerText = sku;
+
+        // Update Available Stock Display
+        const availLabel = document.getElementById('allocAvailable');
+        if (availLabel) availLabel.innerText = availableStock;
+
+        // Update Demand Input
+        const demandInput = document.getElementById('allocDemandQty');
+        if (demandInput) demandInput.value = demandQty;
+
+        // Update Allocate Input
+        const inputQty = document.getElementById('allocInputQty');
+        if (inputQty) {
+            const current = parseFloat(currentAlloc);
+            if (current > 0) {
+                inputQty.value = current;
+            } else {
+                inputQty.value = demandQty; // Default to full demand
+            }
+        }
+
+        modal.classList.remove('hidden');
+        if (inputQty) inputQty.focus();
+    }
+
+    window.closeAllocModal = function() {
+        const modal = document.getElementById('allocationModal');
+        if (modal) modal.classList.add('hidden');
+    }
+
+    // 4. Search & Sort
+    window.doSearch = function(query) {
+        const sort = '{{ current_sort }}';
+        reloadContent(query, sort);
+    }
+
+    window.doSort = function(currentSort, field) {
+        let newSort = 'date_desc';
+
+        if (field === 'date') {
+            newSort = (currentSort === 'date_desc') ? 'date_asc' : 'date_desc';
+        } else if (field === 'sku') {
+            newSort = (currentSort === 'sku_asc') ? 'sku_desc' : 'sku_asc';
+        } else if (field === 'forecast') {
+            newSort = (currentSort === 'forecast_desc') ? 'forecast_asc' : 'forecast_desc';
+        } else if (field === 'actual') {
+            newSort = (currentSort === 'actual_desc') ? 'actual_asc' : 'actual_desc';
+        }
+
+        const searchInput = document.getElementById('searchInput');
+        const query = searchInput ? searchInput.value : '';
+        reloadContent(query, newSort);
+    }
+
+    // 5. Safe Reload Logic (Fixes Duplicate IDs)
+    function reloadContent(query, sort) {
+        const url = `{% url 'forecast:sales_forecast' %}?q=${encodeURIComponent(query)}&sort=${sort}`;
+
+        fetch(url, {
+            headers: { 'X-Requested-With': 'XMLHttpRequest' }
+        })
+        .then(response => response.text())
+        .then(html => {
+            const parser = new DOMParser();
+            const doc = parser.parseFromString(html, 'text/html');
+
+            const newWrapper = doc.getElementById('forecast-content-wrapper');
+            const currentWrapper = document.getElementById('forecast-content-wrapper');
+
+            if (newWrapper && currentWrapper) {
+                currentWrapper.innerHTML = newWrapper.innerHTML;
+
+                const newInput = document.getElementById('searchInput');
+                if (newInput) {
+                    newInput.focus();
+                    const val = newInput.value;
+                    newInput.value = '';
+                    newInput.value = val;
+                }
+            }
+        })
+        .catch(err => console.error('Error updating table:', err));
+    }
+</script>
+
+<style>
+    .rotate-90 { transform: rotate(90deg); }
+    .select-none { user-select: none; }
+</style>

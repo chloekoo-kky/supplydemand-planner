@@ -1,11 +1,16 @@
+import json
+
+
 from django.shortcuts import render, redirect, get_object_or_404
 from django.http import JsonResponse
 from django.contrib import messages
-from django.db.models import F, Sum, Subquery, OuterRef, Min
+from django.db.models import F, Sum, Subquery, OuterRef, Min, Max
 from decimal import Decimal
+from django.views.decorators.http import require_POST
+from django.views.decorators.csrf import csrf_exempt
 
 from inventory.models import Product, InventorySnapshot, BillOfMaterial
-from .models import ProductionOrder
+from .models import ProductionOrder, ProductionComponent
 from .services import (
     generate_order_number, calculate_requirements,
     complete_production, lock_stock_for_order,
@@ -13,34 +18,163 @@ from .services import (
 )
 
 
+
 def production_dashboard(request):
-    """生产概览列表"""
-    orders = ProductionOrder.objects.select_related('product').all().order_by('-start_date')
+    """
+    Production Overview with Time-Phased Inventory Logic (APS Level 1).
+    Orders are calculated sequentially based on start_date to determine true availability.
+    """
+    # 1. 获取所有关联数据
+    # 按 start_date 排序是关键，确保先生产的先分配库存
+    orders = ProductionOrder.objects.select_related('product') \
+                                    .prefetch_related('components__component') \
+                                    .all().order_by('start_date', 'created_at')
 
     fgs = Product.objects.filter(nature='FG').order_by('sku')
 
+    # 2. 构建初始库存池 (Running Balance)
+    # 获取所有相关原料的当前 SOH (Quantity On Hand)
+    # 注意：我们这里用 SOH (实物库存) 作为起点进行推演，而不只是 Net Available
+    # 因为我们要重新模拟所有 Confirmed/Draft 订单的占用过程
+    comp_product_ids = set()
+    for o in orders:
+        if o.status in ['DRAFT', 'CONFIRMED', 'IN_PROGRESS']:
+            for c in o.components.all():
+                comp_product_ids.add(c.component_id)
+
+    inventory_pool = {} # { product_id: float(current_soh) }
+
+    if comp_product_ids:
+        # 获取最新快照
+        sq = InventorySnapshot.objects.filter(product=OuterRef('product')).order_by('-snapshot_date')
+        snapshots = InventorySnapshot.objects.filter(
+            pk=Subquery(sq.values('pk')[:1]),
+            product_id__in=comp_product_ids
+        )
+        for snap in snapshots:
+            inventory_pool[snap.product_id] = float(snap.quantity_on_hand)
+
+    # 3. 核心算法：Time-Phased Allocation (基于时间的分配)
+    for order in orders:
+        # 只计算未完成的订单
+        if order.status in ['DRAFT', 'CONFIRMED', 'IN_PROGRESS']:
+
+            # 标记该订单整体是否齐套
+            order_is_fully_stocked = True
+
+            for comp in order.components.all():
+                pid = comp.component_id
+                required = float(comp.quantity_required)
+
+                # 获取当前池子里的剩余量
+                current_balance = inventory_pool.get(pid, 0.0)
+
+                # 记录给前端显示的“当时可用量”
+                # 这里的 display_stock 代表：轮到这个订单生产时，仓库里还剩多少
+                comp.display_stock = current_balance
+
+                # 判断是否足够
+                if current_balance >= required:
+                    comp.is_enough = True
+                    comp.shortage = 0
+                    # 扣减库存 (预演)
+                    inventory_pool[pid] = current_balance - required
+                else:
+                    comp.is_enough = False
+                    comp.shortage = required - current_balance
+                    order_is_fully_stocked = False
+                    # 库存耗尽，设为0 (不能扣成负数，否则后续订单显示的 Available 会很奇怪)
+                    inventory_pool[pid] = 0
+
+        else:
+            # 已完成/取消的订单，不参与计算，或者仅做简单展示
+            for comp in order.components.all():
+                comp.is_enough = True
+                comp.display_stock = 0 # 不重要
+
+    # 4. 如果用户想按倒序查看列表 (UI习惯)，我们可以在计算完后再反转列表
+    # 但保留计算结果（display_stock 已经是计算好的值了）
+    orders_list = list(orders)
+    # 比如我们想把最近日期的放前面显示，或者按用户原本的习惯
+    # orders_list.sort(key=lambda x: x.start_date, reverse=True)
+
     context = {
-        'orders': orders,
-        'fgs': fgs,  # 【关键】把 fgs 传给模板，否则下拉菜单就是空的
+        'orders': orders_list,
+        'fgs': fgs,
         'page_title': 'Production Orders'
     }
 
-    # 【新增】核心逻辑：如果是 AJAX 请求，只返回局部内容
     if request.headers.get('x-requested-with') == 'XMLHttpRequest':
         return render(request, 'production/partials/dashboard_content.html', context)
 
-    # 否则返回包含 Base 的完整页面
     return render(request, 'production/production_dashboard.html', context)
 
+
+def production_update_status(request, pk):
+    """
+    Update Production Order Status (via Edit Modal)
+    Handles side effects like Locking/Unlocking stock AND Completing Production.
+    """
+    order = get_object_or_404(ProductionOrder, pk=pk)
+
+    if request.method == 'POST':
+        new_status = request.POST.get('status')
+        old_status = order.status
+
+        # Prevent editing Completed orders
+        if old_status == 'COMPLETED':
+            messages.error(request, "Cannot change status of a Completed order.")
+            return redirect('production:dashboard')
+
+        if old_status == 'IN_PROGRESS' and new_status in ['DRAFT', 'CONFIRMED']:
+            messages.error(request, "⚠️ Production Started: Cannot revert to Draft or Confirmed.")
+            return redirect('production:dashboard')
+
+        if new_status and new_status != old_status:
+            try:
+                # === FIX: Handle Completion Logic Here ===
+                if new_status == 'COMPLETED':
+                    if old_status in ['CONFIRMED', 'IN_PROGRESS']:
+                        # Call the service that handles stock deduction and FG entry
+                        complete_production(order)
+                        messages.success(request, f"Order {order.order_number} completed. Stock updated.")
+                        return redirect('production:dashboard')
+                    else:
+                        messages.error(request, "Order must be Confirmed or In Progress to complete.")
+                        return redirect('production:dashboard')
+
+                # === Normal Status Updates (Non-Completion) ===
+
+                # Update status in memory first
+                order.status = new_status
+
+                # 1. Logic: Moving TO Confirmed/In_Progress (Lock Stock)
+                if new_status in ['CONFIRMED', 'IN_PROGRESS'] and old_status not in ['CONFIRMED', 'IN_PROGRESS']:
+                    lock_stock_for_order(order)
+                    msg_extra = "Stock Reserved."
+
+                # 2. Logic: Moving FROM Confirmed/In_Progress TO Draft/Cancelled (Unlock Stock)
+                elif new_status in ['DRAFT', 'CANCELLED'] and old_status in ['CONFIRMED', 'IN_PROGRESS']:
+                    unlock_stock_for_order(order)
+                    msg_extra = "Reservations Released."
+                else:
+                    msg_extra = "Status Updated."
+
+                order.save()
+                messages.success(request, f"Order {order.order_number} updated to {new_status}. {msg_extra}")
+
+            except Exception as e:
+                messages.error(request, f"Error updating status: {str(e)}")
+
+    return redirect('production:dashboard')
+
+
 def production_create(request):
-    """创建工单 (Draft 或 Confirmed)"""
+    """Create Order (Draft or Confirmed)"""
     if request.method == 'POST':
         product_id = request.POST.get('product_id')
         qty = request.POST.get('quantity')
         date = request.POST.get('start_date')
-
-        # 【修改点】默认状态改为 DRAFT (预算模式)
-        # 前端如果选择了 "Confirm / Queue"，这里会接收到 'CONFIRMED'
         status = request.POST.get('status', 'DRAFT')
 
         if product_id and qty:
@@ -52,10 +186,6 @@ def production_create(request):
                 status=status
             )
 
-            # 【核心保留】计算原料需求 (生成 ProductionComponent)
-            # 这一步至关重要，因为它生成的数据会被 Inventory 视图读取：
-            # - 如果是 DRAFT，Inventory 显示为 "Budgeted" (软预留)
-            # - 如果是 CONFIRMED，Inventory 显示为 "Locked" (硬预留)
             calculate_requirements(order)
 
             msg = f"Order {order.order_number} created."
@@ -66,18 +196,15 @@ def production_create(request):
 
             messages.success(request, msg)
 
-            return redirect('production:detail', pk=order.id)
+            return redirect('production:dashboard') # Redirect to dashboard now
 
-    # 如果是 GET 请求，通常重定向回列表或显示空表单（视你原来的逻辑而定）
     return redirect('production:dashboard')
 
 
 def production_update_quantity(request, pk):
-    """更新工单数量 (仅限 Draft)"""
+    """Update Order Quantity (Draft Only)"""
     order = get_object_or_404(ProductionOrder, pk=pk)
 
-    # 【修改点】只允许修改 DRAFT 状态
-    # 如果工单已经 CONFIRMED (锁定库存) 或 IN_PROGRESS，修改数量需要更谨慎的操作（如先 Cancel 或 Revert）
     if order.status != 'DRAFT':
         messages.error(request, "Only DRAFT orders can be edited. Please revert to Draft first.")
         return redirect('production:detail', pk=pk)
@@ -90,42 +217,66 @@ def production_update_quantity(request, pk):
             if new_qty and new_qty_float > 0:
                 order.quantity = new_qty
                 order.save()
-
-                # 【核心保留】重新计算需求
-                # 这会自动更新 ProductionComponent 表，从而刷新 Inventory 里的 "Budgeted" 数量
                 calculate_requirements(order)
-
                 messages.success(request, f"Draft updated to {new_qty}. BOM Requirements recalculated.")
             else:
                 messages.error(request, "Invalid quantity.")
         except ValueError:
             messages.error(request, "Invalid quantity format.")
 
-    return redirect('production:detail', pk=pk)
+    return redirect('production:dashboard')
 
 
 def production_detail(request, pk):
-    """工单详情：显示BOM需求和库存检查"""
+    """
+    Detailed view with full logic (kept for fallback or detailed analysis)
+    """
     order = get_object_or_404(ProductionOrder, pk=pk)
 
-    # 获取原料需求，并附带当前库存进行对比
     components_data = []
     for comp_line in order.components.select_related('component').all():
         latest_stock = InventorySnapshot.objects.filter(
             product=comp_line.component
         ).order_by('-snapshot_date').first()
 
-        current_stock = latest_stock.quantity_on_hand if latest_stock else 0
+        on_hand = float(latest_stock.quantity_on_hand) if latest_stock else 0.0
+        reserved = float(latest_stock.quantity_reserved) if latest_stock else 0.0
 
-        # 为了配合 modal 模板，这里需要加上 sku, name 等字段
+        # Net Available = SOH - Reserved
+        net_available = on_hand - reserved
+
+        # Effective Available Logic (SOH - Reserved_by_Others)
+        total_reserved = reserved
+        my_reserved_qty = 0.0
+        if order.status in ['CONFIRMED', 'IN_PROGRESS']:
+            my_reserved_qty = float(comp_line.quantity_required)
+
+        reserved_by_others = max(0.0, total_reserved - my_reserved_qty)
+        effective_available = on_hand - reserved_by_others
+
+        # Determine check logic
+        if order.status == 'DRAFT':
+            stock_for_check = net_available
+            display_stock = net_available
+            stock_label = "Net Avail"
+        else:
+            stock_for_check = effective_available
+            display_stock = effective_available
+            stock_label = "Effective Avail"
+
         components_data.append({
             'line': comp_line,
-            'sku': comp_line.component.sku,           # 新增
-            'name': comp_line.component.description,  # 新增
-            'required_qty': comp_line.quantity_required, # 新增
-            'current_stock': current_stock,
-            'is_enough': current_stock >= comp_line.quantity_required,
-            'shortage': max(0, comp_line.quantity_required - current_stock) # 新增
+            'sku': comp_line.component.sku,
+            'name': comp_line.component.description,
+            'required_qty': comp_line.quantity_required,
+            'current_stock': on_hand,
+            'net_available': net_available,
+            'reserved': reserved,
+            'display_stock': display_stock,
+            'stock_label': stock_label,
+            'my_reserved': my_reserved_qty,
+            'is_enough': stock_for_check >= float(comp_line.quantity_required),
+            'shortage': max(0, float(comp_line.quantity_required) - stock_for_check)
         })
 
     context = {
@@ -133,33 +284,26 @@ def production_detail(request, pk):
         'components': components_data,
     }
 
-    # 【新增】如果是 AJAX 请求 (来自 Dashboard 弹窗)，只返回 Modal 内容
     if request.headers.get('x-requested-with') == 'XMLHttpRequest':
         return render(request, 'production/partials/production_detail_modal.html', context)
 
-    # 否则返回完整页面 (直接访问链接时)
     return render(request, 'production/production_detail.html', context)
 
 
 def production_action(request, pk, action):
-    """处理状态变更：Confirm, Complete, Cancel"""
+    """Handle Status Changes: Confirm, Complete, Cancel"""
     order = get_object_or_404(ProductionOrder, pk=pk)
 
     if request.method == 'POST':
-        # 1. Confirm: Draft -> Confirmed (锁定库存)
         if action == 'confirm':
             if order.status == 'DRAFT':
                 order.status = 'CONFIRMED'
                 order.save()
-
-                # 【关键】调用服务锁定库存
                 lock_stock_for_order(order)
-
                 messages.success(request, f"Order {order.order_number} confirmed. Stock reserved.")
             else:
                 messages.warning(request, "Only DRAFT orders can be confirmed.")
 
-        # 2. Complete: Confirmed -> Completed (扣减库存，成品入库)
         elif action == 'complete':
             try:
                 complete_production(order)
@@ -167,79 +311,61 @@ def production_action(request, pk, action):
             except Exception as e:
                 messages.error(request, f"Error: {str(e)}")
 
-        # 3. Cancel: Any -> Cancelled (释放库存)
         elif action == 'cancel':
-            # 记录旧状态，判断是否需要释放库存
             was_locked = order.status in ['CONFIRMED', 'IN_PROGRESS']
-
             if order.status != 'COMPLETED':
-                # 如果之前是锁定状态，先释放库存
                 if was_locked:
                     unlock_stock_for_order(order)
-
                 order.status = 'CANCELLED'
                 order.save()
                 messages.warning(request, "Order cancelled. Reservations released.")
             else:
                 messages.error(request, "Cannot cancel a completed order.")
 
-    return redirect('production:detail', pk=pk)
-
+    return redirect('production:dashboard')
 
 
 def get_product_max_capacity(request):
-    """
-    API: 根据 BOM 和当前库存计算某成品的最大可生产数量
-    """
+    """API: Simple Max Capacity based on BOM and SOH"""
     product_id = request.GET.get('product_id')
     if not product_id:
         return JsonResponse({'max_qty': 0})
 
-    # 1. 获取该产品的 BOM 结构
     bom_lines = BillOfMaterial.objects.filter(product_id=product_id)
-
     if not bom_lines.exists():
-        # 如果没有 BOM (配方)，默认无法计算或设为 0 (或者无限，视业务而定，这里设为0较安全)
         return JsonResponse({'max_qty': 0, 'reason': 'No BOM found'})
 
     max_possible_list = []
-
-    # 2. 遍历每一个原料，计算它能支持生产多少成品
     for line in bom_lines:
         component = line.component
-        qty_required = line.quantity  # 生产 1 个成品需要的原料数量
+        qty_required = line.quantity
 
-        # 获取该原料的最新库存
         latest_stock = InventorySnapshot.objects.filter(
             product=component
         ).order_by('-snapshot_date').first()
-
         current_stock = latest_stock.quantity_on_hand if latest_stock else 0
 
         if qty_required > 0:
-            # 向下取整：库存 / 单耗
             possible_yield = int(current_stock // qty_required)
             max_possible_list.append(possible_yield)
-        else:
-            # 如果单耗为0 (异常数据)，则不限制
-            pass
 
-    # 3. 取所有原料计算结果的最小值 (木桶效应)
-    # 如果列表为空 (BOM里没原料)，则为 0
     final_max_qty = min(max_possible_list) if max_possible_list else 0
-
     return JsonResponse({'max_qty': final_max_qty})
-
 
 
 def calculate_production_capacity(request):
     """
-    API: 生产试算
-    输入: product_id, quantity
-    输出: BOM原料详情列表，标记谁是瓶颈
+    API: Estimator Logic
+    Returns max producible quantity based on PROJECTED availability.
     """
     product_id = request.GET.get('product_id')
-    quantity = float(request.GET.get('quantity', 0))
+
+    # === FIX: Handle empty string for quantity safely ===
+    try:
+        raw_qty = request.GET.get('quantity', 0)
+        quantity = float(raw_qty) if raw_qty else 0.0
+    except ValueError:
+        quantity = 0.0
 
     if not product_id:
         return JsonResponse({'error': 'Product required'}, status=400)
@@ -247,37 +373,44 @@ def calculate_production_capacity(request):
     bom_lines = BillOfMaterial.objects.filter(product_id=product_id).select_related('component')
 
     if not bom_lines.exists():
-        return JsonResponse({'error': 'No BOM found for this product'}, status=400)
+        return JsonResponse({'error': 'No BOM found'}, status=400)
 
     components_data = []
-    max_producible = float('inf') # 无限大初始值
+    max_producible = float('inf')
 
     for line in bom_lines:
         required_qty = float(line.quantity) * quantity
 
-        # 获取当前库存
         latest_stock = InventorySnapshot.objects.filter(
             product=line.component
         ).order_by('-snapshot_date').first()
 
-        current_stock = float(latest_stock.quantity_on_hand) if latest_stock else 0.0
+        on_hand = float(latest_stock.quantity_on_hand) if latest_stock else 0.0
+        reserved = float(latest_stock.quantity_reserved) if latest_stock else 0.0
 
-        # 计算该原料最多能支持做多少成品
+        net_available = on_hand - reserved
+
+        budgeted_agg = ProductionComponent.objects.filter(
+            component=line.component,
+            production_order__status='DRAFT'
+        ).aggregate(total=Sum('quantity_required'))
+
+        budgeted = float(budgeted_agg['total'] or 0.0)
+        projected_available = net_available - budgeted
+        stock_for_calc = max(0, projected_available)
+
         if line.quantity > 0:
-            limit_by_component = int(current_stock // float(line.quantity))
+            limit_by_component = int(stock_for_calc // float(line.quantity))
             if limit_by_component < max_producible:
                 max_producible = limit_by_component
 
         components_data.append({
             'sku': line.component.sku,
-            'name': line.component.description,
             'required': required_qty,
-            'stock': current_stock,
-            'status': 'OK' if current_stock >= required_qty else 'SHORTAGE',
-            'shortage_qty': max(0, required_qty - current_stock)
+            'projected_available': projected_available,
+            'status': 'OK' if stock_for_calc >= required_qty else 'SHORTAGE',
         })
 
-    # 如果没有限制因素（比如不需要原料），虽然不太可能
     if max_producible == float('inf'):
         max_producible = 0
 
@@ -286,3 +419,150 @@ def calculate_production_capacity(request):
         'max_possible': max_producible,
         'is_feasible': max_producible >= quantity
     })
+
+
+
+def production_calendar(request):
+    """渲染日历主页面"""
+    context = {
+        'page_title': 'Production Schedule'
+    }
+
+    # === 关键修改：如果是 AJAX 请求，只返回局部内容 ===
+    if request.headers.get('x-requested-with') == 'XMLHttpRequest':
+        return render(request, 'production/partials/calendar_content.html', context)
+
+    # 如果是直接刷新页面，返回包含 Sidebar 的完整页面
+    return render(request, 'production/calendar.html', context)
+
+def calendar_events_api(request):
+    """
+    API: 为 FullCalendar 提供 JSON 数据
+    """
+    start_str = request.GET.get('start')
+    end_str = request.GET.get('end')
+
+    # === 关键修复 1: 日期格式化 ===
+    # FullCalendar 发送的是 ISO 格式 (e.g., 2026-01-26T00:00:00Z)
+    # 我们只取前 10 位 (YYYY-MM-DD) 以匹配数据库的 DateField
+    start_date = start_str[:10] if start_str else None
+    end_date = end_str[:10] if end_str else None
+
+    # 构建查询
+    query = ProductionOrder.objects.select_related('product').all()
+    if start_date:
+        query = query.filter(start_date__gte=start_date)
+    if end_date:
+        query = query.filter(start_date__lte=end_date)
+
+    orders = query
+
+    events = []
+    for order in orders:
+        # Visual Management: 颜色编码
+        color = '#9ca3af'     # Gray (Draft)
+        border_color = '#9ca3af'
+
+        editable = True
+
+        # === 关键修复 2: 修正拼写 CANCELED (1个L) 以匹配 models.py ===
+        if order.status == 'CONFIRMED':
+            color = '#2563eb' # Blue
+            border_color = '#1d4ed8'
+        elif order.status == 'IN_PROGRESS':
+            color = "#e5a546" # Orange
+            border_color = "#c56a15"
+            editable = False
+        elif order.status == 'COMPLETED':
+            color = '#059669' # Emerald
+            border_color = '#065f46'
+            editable = False
+        elif order.status == 'CANCELED': # 注意这里是 1 个 L
+            color = '#ef4444' # Red
+            editable = False
+
+        events.append({
+            'id': order.id,
+            'title': f"{order.product.sku} ({int(order.quantity)})",
+            'start': order.start_date.isoformat(),
+            'backgroundColor': color,
+            'borderColor': border_color,
+            'textColor': '#ffffff',
+            'allDay': True,
+            'editable': editable,
+            'extendedProps': {
+                'status': order.get_status_display(),
+                'status_raw': order.status,
+                'po_number': order.order_number,
+            }
+        })
+
+    return JsonResponse(events, safe=False)
+
+@csrf_exempt # 简化演示，实际项目建议保留 CSRF 保护
+@require_POST
+def calendar_move_api(request):
+    """
+    API: 处理拖拽后的日期更新
+    """
+    try:
+        data = json.loads(request.body)
+        event_id = data.get('id')
+        new_date_str = data.get('new_date') # 格式 YYYY-MM-DD
+
+        order = ProductionOrder.objects.get(id=event_id)
+
+        # 业务规则检查：
+        # 1. 如果订单已经 COMPLETED 或 IN_PROGRESS，前端虽然禁用了，后端也要防守
+        if order.status not in ['DRAFT', 'CONFIRMED']:
+            return JsonResponse({'status': 'error', 'message': 'Locked orders cannot be moved.'}, status=403)
+
+        # 2. 更新日期
+        order.start_date = new_date_str
+        order.save()
+
+        return JsonResponse({'status': 'ok', 'message': f'Order {order.order_number} moved to {new_date_str}'})
+
+    except ProductionOrder.DoesNotExist:
+        return JsonResponse({'status': 'error', 'message': 'Order not found'}, status=404)
+    except Exception as e:
+        return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
+
+
+def production_complete_submission(request, pk):
+    """
+    Handle the 'Complete Production' modal submission.
+    Updates Actual FG Qty and Actual Component Usage before finalizing.
+    """
+    order = get_object_or_404(ProductionOrder, pk=pk)
+
+    if request.method == 'POST':
+        try:
+            # 1. Update FG Actual Quantity (Updates the Order Record)
+            actual_fg_qty = request.POST.get('actual_fg_qty')
+            if actual_fg_qty:
+                order.quantity = float(actual_fg_qty)
+                order.save()
+
+            # 2. Update Component Actual Usage
+            # Iterate through POST data to find component inputs
+            for key, value in request.POST.items():
+                if key.startswith('comp_usage_'):
+                    comp_id = key.replace('comp_usage_', '')
+                    try:
+                        usage_qty = float(value)
+                        # Fetch the specific component record
+                        comp = order.components.get(id=comp_id)
+                        comp.quantity_used = usage_qty
+                        comp.save()
+                    except (ValueError, ProductionComponent.DoesNotExist):
+                        continue # Skip invalid data
+
+            # 3. Finalize Production (Stock Transactions)
+            complete_production(order)
+            messages.success(request, f"Production completed! FG: {order.quantity}, Materials deducted.")
+
+        except Exception as e:
+            messages.error(request, f"Error completing production: {str(e)}")
+
+    return redirect('production:detail', pk=pk)

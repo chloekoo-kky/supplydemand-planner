@@ -1,0 +1,213 @@
+<div id="editStatusModal" class="relative z-[60] hidden" aria-labelledby="modal-title" role="dialog" aria-modal="true">
+    <div class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm transition-opacity"></div>
+
+    <div class="fixed inset-0 z-10 w-screen overflow-y-auto"
+         onmousedown="this.dataset.readyToClose = 'true'"
+         onclick="if(this.dataset.readyToClose === 'true') closeEditStatusModal(); this.dataset.readyToClose = 'false'">
+
+        <div class="flex min-h-full items-center justify-center p-4 text-center sm:p-0">
+
+            <div class="relative transform overflow-hidden rounded-xl bg-white text-left shadow-2xl transition-all sm:my-8 sm:w-full sm:max-w-lg border border-slate-100"
+                 onmousedown="event.stopPropagation()"
+                 onclick="event.stopPropagation()">
+
+                <form id="editStatusForm" method="POST" class="flex flex-col h-full">
+                    {% csrf_token %}
+
+                    <div class="bg-white px-4 pb-4 pt-5 sm:p-6 border-b border-slate-100 flex justify-between items-start">
+                        <div>
+                            <h3 class="text-lg font-bold text-slate-900">Update Order Status</h3>
+                            <p class="text-sm text-slate-500 mt-1">PO: <span id="edit_modal_po" class="font-mono font-medium text-indigo-600 bg-indigo-50 px-1 rounded"></span></p>
+                        </div>
+                        <div class="h-8 w-8 rounded-full bg-slate-100 flex items-center justify-center text-slate-400 cursor-pointer hover:bg-slate-200" onclick="closeEditStatusModal()">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                        </div>
+                    </div>
+
+                    <div class="px-4 py-5 sm:p-6 bg-slate-50/50 max-h-[60vh] overflow-y-auto">
+
+                        <div id="status_warning_msg" class="hidden mb-4 p-3 rounded-lg text-sm font-bold bg-yellow-50 text-yellow-800 border border-yellow-200 flex items-center">
+                            </div>
+
+                        <label class="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3 block">Select New Stage</label>
+
+                        <div class="space-y-3">
+                            <label id="label_status_DRAFT" class="relative flex cursor-pointer rounded-lg border bg-white p-4 shadow-sm focus:outline-none hover:border-indigo-300 transition-all group">
+                                <input type="radio" name="status" value="DRAFT" class="sr-only" aria-labelledby="status-draft-label">
+                                <span class="flex flex-1">
+                                    <span class="flex flex-col">
+                                        <span id="status-draft-label" class="block text-sm font-bold text-slate-900 group-hover:text-indigo-600">📝 Draft (Planning)</span>
+                                        <span class="mt-1 flex items-center text-xs text-slate-500">
+                                            <svg class="w-3 h-3 mr-1 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                                            No stock reserved. Flexible dates.
+                                        </span>
+                                    </span>
+                                </span>
+                                <div class="check-circle hidden text-indigo-600">
+                                    <svg class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" /></svg>
+                                </div>
+                            </label>
+
+                            <label id="label_status_CONFIRMED" class="relative flex cursor-pointer rounded-lg border bg-white p-4 shadow-sm focus:outline-none hover:border-blue-300 transition-all group">
+                                <input type="radio" name="status" value="CONFIRMED" class="sr-only">
+                                <span class="flex flex-1">
+                                    <span class="flex flex-col">
+                                        <span class="block text-sm font-bold text-slate-900 group-hover:text-blue-600">🔒 Confirmed (Locked)</span>
+                                        <span class="mt-1 flex items-center text-xs text-blue-600 font-medium">
+                                            <svg class="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
+                                            Reserves Stock (Hard Allocation)
+                                        </span>
+                                    </span>
+                                </span>
+                                <div class="check-circle hidden text-blue-600">
+                                    <svg class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" /></svg>
+                                </div>
+                            </label>
+
+                            <label class="relative flex cursor-pointer rounded-lg border bg-white p-4 shadow-sm focus:outline-none hover:border-indigo-300 transition-all group">
+                                <input type="radio" name="status" value="IN_PROGRESS" class="sr-only">
+                                <span class="flex flex-1">
+                                    <span class="flex flex-col">
+                                        <span class="block text-sm font-bold text-slate-900 group-hover:text-orange-600">⚙️ In Progress</span>
+                                        <span class="mt-1 flex items-center text-xs text-slate-500">
+                                            WIP. Production started.
+                                        </span>
+                                    </span>
+                                </span>
+                                <div class="check-circle hidden text-indigo-600">
+                                    <svg class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" /></svg>
+                                </div>
+                            </label>
+
+                             <label class="relative flex cursor-pointer rounded-lg border bg-white p-4 shadow-sm focus:outline-none hover:border-emerald-300 transition-all group">
+                                <input type="radio" name="status" value="COMPLETED" class="sr-only">
+                                <span class="flex flex-1">
+                                    <span class="flex flex-col">
+                                        <span class="block text-sm font-bold text-slate-900 group-hover:text-emerald-600">✅ Completed</span>
+                                        <span class="mt-1 flex items-center text-xs text-slate-500">
+                                            Done. Stock consumed & FG created.
+                                        </span>
+                                    </span>
+                                </span>
+                                <div class="check-circle hidden text-emerald-600">
+                                    <svg class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" /></svg>
+                                </div>
+                            </label>
+
+                             <label class="relative flex cursor-pointer rounded-lg border bg-white p-4 shadow-sm focus:outline-none hover:border-red-300 transition-all group">
+                                <input type="radio" name="status" value="CANCELLED" class="sr-only">
+                                <span class="flex flex-1">
+                                    <span class="flex flex-col">
+                                        <span class="block text-sm font-bold text-slate-900 group-hover:text-red-600">❌ Cancelled</span>
+                                        <span class="mt-1 flex items-center text-xs text-slate-500">
+                                            Releases all reserved stock.
+                                        </span>
+                                    </span>
+                                </span>
+                                <div class="check-circle hidden text-red-600">
+                                    <svg class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" /></svg>
+                                </div>
+                            </label>
+                        </div>
+                    </div>
+
+                    <div class="bg-slate-50 px-4 py-3 sm:flex sm:flex-row-reverse sm:px-6 border-t border-slate-100 rounded-b-xl">
+                        <button type="submit" class="inline-flex w-full justify-center rounded-lg bg-indigo-600 px-4 py-2 text-sm font-bold text-white shadow-sm hover:bg-indigo-500 sm:ml-3 sm:w-auto transition-colors">
+                            Update Status
+                        </button>
+                        <button type="button" onclick="closeEditStatusModal()" class="mt-3 inline-flex w-full justify-center rounded-lg bg-white px-4 py-2 text-sm font-bold text-slate-700 shadow-sm ring-1 ring-inset ring-slate-300 hover:bg-slate-50 sm:mt-0 sm:w-auto transition-colors">
+                            Cancel
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+    /* Radio Button Logic: Show border and checkmark when selected */
+    input[type="radio"]:checked + span + .check-circle { display: block; }
+    input[type="radio"]:checked + span { color: #4f46e5; }
+    input[type="radio"]:checked ~ span span:first-child { color: inherit; }
+
+    label:has(input[type="radio"]:checked) {
+        border-color: #6366f1; /* Indigo-500 */
+        background-color: #f5f3ff; /* Indigo-50 */
+        box-shadow: 0 0 0 1px #6366f1;
+    }
+
+    /* Disabled State Styling */
+    label.disabled-option {
+        opacity: 0.5;
+        cursor: not-allowed;
+        background-color: #f8fafc; /* Slate-50 */
+    }
+</style>
+
+<script>
+    // Global Functions for Edit Status Modal
+    window.openEditStatusModal = function(orderId, currentStatus, poNumber) {
+        const modal = document.getElementById('editStatusModal');
+        const form = document.getElementById('editStatusForm');
+        form.action = `/production/order/${orderId}/status/`;
+        document.getElementById('edit_modal_po').innerText = poNumber;
+
+        const radios = form.querySelectorAll('input[name="status"]');
+        const warningMsg = document.getElementById('status_warning_msg');
+
+        // 获取特定的 Labels 用于禁用
+        const labelDraft = document.getElementById('label_status_DRAFT');
+        const labelConfirmed = document.getElementById('label_status_CONFIRMED');
+
+        // 1. 重置所有状态 (清空禁用样式)
+        radios.forEach(r => {
+            r.checked = false;
+            r.disabled = false;
+        });
+        if(labelDraft) labelDraft.classList.remove('disabled-option', 'pointer-events-none');
+        if(labelConfirmed) labelConfirmed.classList.remove('disabled-option', 'pointer-events-none');
+
+        warningMsg.classList.add('hidden');
+        warningMsg.innerText = '';
+
+        // 2. 设置当前选中项
+        radios.forEach(r => {
+            if (r.value === currentStatus) {
+                r.checked = true;
+            }
+        });
+
+        // 3. 应用业务逻辑限制 (Business Logic)
+        if (currentStatus === 'IN_PROGRESS') {
+            // 禁用 Draft
+            if(labelDraft) {
+                labelDraft.classList.add('disabled-option', 'pointer-events-none');
+                const inp = labelDraft.querySelector('input');
+                if(inp) inp.disabled = true;
+            }
+            // 禁用 Confirmed
+            if(labelConfirmed) {
+                labelConfirmed.classList.add('disabled-option', 'pointer-events-none');
+                const inp = labelConfirmed.querySelector('input');
+                if(inp) inp.disabled = true;
+            }
+
+            // 显示警告
+            warningMsg.innerText = "⚠️ Production Started: Cannot revert to Draft or Confirmed.";
+            warningMsg.classList.remove('hidden');
+        }
+
+        modal.classList.remove('hidden');
+    };
+
+    window.closeEditStatusModal = function() {
+        document.getElementById('editStatusModal').classList.add('hidden');
+    };
+
+    document.addEventListener('keydown', function(e) {
+        if (e.key === "Escape") {
+            window.closeEditStatusModal();
+        }
+    });
+</script>

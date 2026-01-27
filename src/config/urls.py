@@ -83,5 +83,6 @@ urlpatterns = [
     path('', include('core.urls')),
     path('inventory/', include('inventory.urls')),
     path('production/', include('production.urls')),
+    path('forecast/', include('forecast.urls')),
     
 ]

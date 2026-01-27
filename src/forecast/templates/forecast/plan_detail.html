@@ -1,0 +1,110 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <nav aria-label="breadcrumb">
+                <ol class="breadcrumb mb-1">
+                    <li class="breadcrumb-item"><a href="{% url 'forecast:dashboard' %}">Production Planning</a></li>
+                    <li class="breadcrumb-item active" aria-current="page">{{ plan.name }}</li>
+                </ol>
+            </nav>
+            <h2 class="h3 mb-0 text-gray-800">{{ plan.name }}</h2>
+            <p class="text-muted">Target Month: {{ plan.target_month|date:"F Y" }}</p>
+        </div>
+
+        <div class="d-flex gap-2">
+            <a href="{% url 'forecast:delete_plan' plan.pk %}"
+               class="btn btn-outline-danger"
+               onclick="return confirm('Delete this plan?');">
+                <i class="bi bi-trash"></i> Delete
+            </a>
+
+            <form method="POST">
+                {% csrf_token %}
+                <input type="hidden" name="convert_po" value="1">
+                {% if plan.is_locked %}
+                    <button type="button" class="btn btn-secondary" disabled>
+                        <i class="bi bi-check-all me-2"></i>Orders Generated
+                    </button>
+                {% else %}
+                    <button type="submit" class="btn btn-primary shadow-sm" onclick="return confirm('This will create DRAFT Production Orders for all items. Continue?');">
+                        <i class="bi bi-arrow-right-circle-fill me-2"></i>Generate Production Orders
+                    </button>
+                {% endif %}
+            </form>
+        </div>
+    </div>
+
+    <div class="card bg-light border-0 mb-4">
+        <div class="card-body">
+            <h6 class="fw-bold text-dark"><i class="bi bi-calculator me-2"></i>MRP Logic Used:</h6>
+            <p class="mb-0 text-muted small">
+                Suggested Qty = (Forecast Demand + Safety Stock) - (Current Stock + Incoming POs). <br>
+                If the result is less than MOQ, the MOQ is used. Dates are calculated based on Lead Time.
+            </p>
+        </div>
+    </div>
+
+    <div class="card shadow mb-4">
+        <div class="card-header py-3 bg-white d-flex justify-content-between align-items-center">
+            <h6 class="m-0 font-weight-bold text-primary">Production Suggestions</h6>
+            <span class="badge bg-secondary">{{ plan.entries.count }} Items</span>
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-bordered table-hover mb-0" width="100%" cellspacing="0">
+                    <thead class="table-light">
+                        <tr>
+                            <th>SKU / Product</th>
+                            <th class="text-end">Suggested Qty</th>
+                            <th>Timeline</th>
+                            <th>Calculation Logic / Note</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for entry in plan.entries.all %}
+                        <tr>
+                            <td>
+                                <div class="fw-bold">{{ entry.product.sku }}</div>
+                                <small class="text-muted">{{ entry.product.description|truncatechars:40 }}</small>
+                            </td>
+                            <td class="text-end align-middle">
+                                <span class="fs-5 fw-bold text-dark">{{ entry.suggested_qty|floatformat:0 }}</span>
+                                <small class="text-muted d-block">{{ entry.product.uom }}</small>
+                            </td>
+                            <td class="small">
+                                <div><span class="text-muted">Start:</span> <strong>{{ entry.suggested_start_date|date:"Y-m-d" }}</strong></div>
+                                <div><span class="text-muted">Due:</span> <span class="text-primary">{{ entry.eta_date|date:"Y-m-d" }}</span></div>
+                            </td>
+                            <td class="text-muted small align-middle">
+                                <i class="bi bi-info-circle me-1"></i> {{ entry.calculation_note }}
+                            </td>
+                            <td class="align-middle text-center">
+                                {% if entry.production_order %}
+                                    <a href="#" class="btn btn-sm btn-outline-success">
+                                        <i class="bi bi-file-earmark-text me-1"></i>
+                                        {{ entry.production_order.order_number }}
+                                    </a>
+                                {% else %}
+                                    <span class="badge bg-warning text-dark">Pending Action</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% empty %}
+                        <tr>
+                            <td colspan="5" class="text-center py-4 text-muted">
+                                No production suggestions found. Stock levels might be sufficient for this month's demand.
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

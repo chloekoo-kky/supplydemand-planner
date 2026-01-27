@@ -11,6 +11,7 @@
         box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
         z-index: 10;
     }
+
     .stock-grid-3 {
         display: grid;
         grid-template-columns: 1fr 1fr 1fr;
@@ -44,10 +45,11 @@
     .list-view-container .group { width: 100%; }
 
     .list-view-container .asset-card {
-        flex-direction: row; /* Horizontal layout */
+        flex-direction: row;
         align-items: center;
         height: auto;
-        padding: 0.75rem 1.5rem;
+        padding: 0.5rem 1rem;
+        border: 1px solid #f3f4f6;
     }
     .list-view-container .asset-card:hover {
         transform: none;
@@ -73,18 +75,19 @@
 
     /* Column 2: Stock */
     .list-view-container .card-stock {
-        min-width: 250px !important; /* Slightly wider to fit category */
-        margin: 0 2rem !important;
+        flex: 1; /* 占据剩余空间 */
+        margin: 0 1.5rem !important;
         padding: 0 !important;
         background: none !important;
         border: none !important;
-        display: flex;
-        flex-direction: column;
-        justify-content: center;
-        align-items: flex-end;
-        text-align: right;
-    }
+        box-shadow: none !important;
 
+        display: flex;
+        flex-direction: row !important; /* 让两组数据并排 */
+        align-items: center !important;
+        justify-content: flex-end; /* 靠右对齐 */
+        gap: 2rem; /* 两组数据之间的间距 */
+    }
     /* List View: Show Category next to Stock in the upper row */
     .list-view-container .card-stock .stock-grid {
         display: flex !important;
@@ -121,6 +124,11 @@
         padding-top: 0 !important;
         border-top: none !important;
         align-items: flex-end !important;
+    }
+
+    /* 列表模式下隐藏中间的参数行 (Usage/LeadTime/Safety) 以保持整洁 */
+    .list-view-container .card-params-row {
+        display: none !important;
     }
 
     /* Column 3: Status Footer */
@@ -269,20 +277,46 @@
                                 {% else %}bg-white{% endif %}">
 
                                 <span class="text-[9px] uppercase font-bold tracking-wider
-                                    {% if product.nature == 'FG' %}text-blue-400{% else %}text-amber-500{% endif %}">
-                                    {% if product.nature == 'FG' %}Inbound{% else %}Locked{% endif %}
+                                    {% if product.nature == 'FG' and product.qty_reserved > 0 %}text-purple-500
+                                    {% elif product.nature == 'FG' %}text-blue-400
+                                    {% else %}text-amber-500{% endif %}">
+
+                                    {% if product.nature == 'FG' %}
+                                        {% if product.qty_reserved > 0 %}
+                                            Allocated {% else %}
+                                            Inbound
+                                        {% endif %}
+                                    {% else %}
+                                        Locked
+                                    {% endif %}
                                 </span>
 
                                 <span class="text-lg font-bold leading-tight
-                                    {% if product.nature == 'FG' %}text-blue-600{% else %}text-amber-600{% endif %}">
+                                    {% if product.nature == 'FG' and product.qty_reserved > 0 %}text-purple-600
+                                    {% elif product.nature == 'FG' %}text-blue-600
+                                    {% else %}text-amber-600{% endif %}">
+
                                     {% if product.nature == 'FG' %}
-                                        {{ product.qty_fg_wip|default:0|floatformat:0 }}
+                                        {% if product.qty_reserved > 0 %}
+                                            {{ product.qty_reserved|default:0|floatformat:0 }}
+                                            {% if product.qty_fg_wip > 0 %}
+                                                <span class="text-[9px] text-blue-400 block">+{{ product.qty_fg_wip|floatformat:0 }} WIP</span>
+                                            {% endif %}
+                                        {% else %}
+                                            {{ product.qty_fg_wip|default:0|floatformat:0 }}
+                                        {% endif %}
                                     {% else %}
                                         {{ product.qty_reserved|default:0|floatformat:0 }}
                                     {% endif %}
                                 </span>
 
-                                <span class="text-[9px] text-gray-400">WIP</span>
+                                <span class="text-[9px] text-gray-400">
+                                    {% if product.nature == 'FG' and product.qty_reserved > 0 %}
+                                        Rsrvd
+                                    {% else %}
+                                        WIP
+                                    {% endif %}
+                                </span>
                             </div>
 
                             <div class="stock-cell bg-white">
@@ -294,31 +328,87 @@
                             </div>
                         </div>
 
-                        <div class="px-2 py-1.5 bg-gray-50 flex justify-between items-center text-[14px]">
-                            {% if product.nature == 'FG' %}
-                                <span class="text-gray-400">Draft Plan: <strong>{{ product.qty_fg_draft|default:0|floatformat:0 }}</strong></span>
-                                <span class="text-gray-400">Pjt Avail: {{ product.projected_stock|floatformat:0 }}</span>
-                            {% else %}
-                                <span class="text-gray-400">Budgeted: <strong>{{ product.qty_rm_draft|default:0|floatformat:0 }}</strong></span>
-                                <span class="text-gray-400" title="Projected = Net - Budgeted">Pjt Avail: {{ product.projected_stock|floatformat:0 }}</span>
-                            {% endif %}
+                        <div class="grid grid-cols-2 divide-x divide-gray-100 bg-gray-50 border-t border-gray-100">
+                            <div class="stock-cell">
+                                <span class="text-[9px] uppercase font-bold text-gray-400 tracking-wider">
+                                    {% if product.nature == 'FG' %}Draft Plan{% else %}Budgeted{% endif %}
+                                </span>
+                                <span class="text-base font-bold text-gray-600 leading-tight">
+                                    {% if product.nature == 'FG' %}
+                                        {{ product.qty_fg_draft|default:0|floatformat:0 }}
+                                    {% else %}
+                                        {{ product.qty_rm_draft|default:0|floatformat:0 }}
+                                    {% endif %}
+                                </span>
+                                <span class="text-[9px] text-gray-400">Soft Alloc</span>
+                            </div>
+
+                            <div class="stock-cell">
+                                <span class="text-[9px] uppercase font-bold text-gray-400 tracking-wider">Projected Avail</span>
+                                <span class="text-base font-bold {% if product.projected_stock < 0 %}text-red-600{% else %}text-gray-600{% endif %} leading-tight">
+                                    {{ product.projected_stock|floatformat:0 }}
+                                </span>
+                                <span class="text-[9px] text-gray-400">Forecast</span>
+                            </div>
                         </div>
                     </div>
 
-                    <div class="card-footer flex justify-between items-center text-xs mt-auto pt-1">
-                        <span class="px-2 py-0.5 rounded bg-gray-100 text-gray-500 font-medium">
-                            {{ product.category|default:"General" }}
-                        </span>
+                    <div class="card-params-row px-1 mt-2 mb-1">
+                        <div class="bg-slate-50 border border-slate-100 rounded-lg p-2 flex flex-col gap-2">
 
-                        {% if product.net_available <= 0 %}
-                             <span class="text-red-600 font-bold flex items-center">
-                                <span class="w-1.5 h-1.5 bg-red-500 rounded-full mr-1.5 animate-pulse"></span> Low
+                            <div class="flex justify-between items-center text-xs text-slate-500">
+                                <div class="flex flex-col" title="Replenishment takes {{ product.lead_time_days }} days">
+                                    <span class="uppercase tracking-wider font-bold text-[9px] text-slate-400">Lead Time</span>
+                                    <span class="font-mono text-slate-700 leading-tight">
+                                        {{ product.lead_time_days }}d
+                                        <span class="text-slate-400 mx-0.5">|</span>
+                                        <span class="text-slate-500 text-[10px]">Use:{{ product.calc_usage_in_lt|floatformat:0 }}</span>
+                                    </span>
+                                </div>
+
+                                <div class="flex flex-col items-end" title="Projected Stock Level after Lead Time (Current - Usage in LT)">
+                                    <span class="uppercase tracking-wider font-bold text-[9px] text-slate-400">Safety @ LT</span>
+                                    <div class="font-mono font-bold leading-tight
+                                        {% if product.calc_projected_safety < 0 %} text-red-600
+                                        {% elif product.calc_projected_safety < product.min_stock %} text-amber-600
+                                        {% else %} text-emerald-600 {% endif %}">
+                                        {{ product.calc_projected_safety|floatformat:0 }}
+                                        <span class="text-[9px] font-normal text-slate-400">{{ product.uom }}</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div>
+                                <div class="flex items-center justify-between px-2 py-1.5 rounded border text-[11px] font-medium {{ product.mrp_color }}">
+                                    <div class="flex items-center gap-1.5 truncate">
+                                        {% if product.mrp_status == 'URGENT' or product.mrp_status == 'NOW' %}
+                                            <svg class="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                                        {% elif product.mrp_status == 'SOON' %}
+                                            <svg class="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                                        {% elif product.mrp_status == 'OK' %}
+                                            <svg class="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                                        {% else %}
+                                            <svg class="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
+                                        {% endif %}
+
+                                        <span class="truncate">{{ product.mrp_action_msg }}</span>
+                                    </div>
+
+                                    {% if product.mrp_runout_date %}
+                                    <div class="text-[9px] opacity-80 whitespace-nowrap ml-1" title="Projected Stockout Date">
+                                        End: {{ product.mrp_runout_date|date:"d/m" }}
+                                    </div>
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="flex justify-end mt-1">
+                             <span class="px-1.5 py-0.5 rounded bg-gray-50 text-[10px] text-gray-400 font-medium border border-gray-100">
+                                {{ product.category|default:"General" }}
                             </span>
-                        {% else %}
-                             <span class="text-green-600 font-bold flex items-center">OK</span>
-                        {% endif %}
+                        </div>
                     </div>
-
                     <div class="card-actions flex items-center justify-end space-x-2 mt-3 pt-2 border-t border-gray-50">
 
                         {% if product.is_temporary %}
@@ -352,6 +442,7 @@
                             data-safety="{{ product.safety_stock_days }}"
                             data-moq="{{ product.moq|default:0 }}"
                             data-lead="{{ product.lead_time_days }}"
+                            data-usage="{{ product.estimated_daily_usage|default:0 }}"
                             class="text-gray-400 hover:text-blue-600 p-1.5 rounded-md hover:bg-gray-50 transition"
                             title="Edit Item">
                             <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path></svg>
@@ -389,8 +480,36 @@
     {% endfor %}
 </div>
 
-<div id="editProductModal" class="hidden fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full" onclick="if(event.target === this) closeEditModal()">
-    <div class="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white">
+<div id="forecastModal" class="hidden fixed inset-0 bg-gray-600 bg-opacity-50 ... z-50">
+    <div class="relative top-20 mx-auto p-5 border w-[500px] shadow-lg rounded-md bg-white">
+        <h3 class="text-lg font-bold mb-4">Demand Schedule: <span id="fc_modal_sku"></span></h3>
+
+        <table class="w-full text-sm text-left">
+            <thead class="bg-gray-50 text-xs uppercase text-gray-500">
+                <tr>
+                    <th class="px-2 py-2">Country</th>
+                    <th class="px-2 py-2">ETA Date</th>
+                    <th class="px-2 py-2 text-right">Qty</th>
+                </tr>
+            </thead>
+            <tbody id="fc_modal_body">
+                </tbody>
+        </table>
+
+        <div class="mt-4 text-right">
+            <button onclick="closeForecastModal()" class="px-4 py-2 bg-gray-200 rounded">Close</button>
+        </div>
+    </div>
+</div>
+
+<div id="editProductModal" class="hidden fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50"
+     onmousedown="this.dataset.readyToClose = 'true'"
+     onclick="if(this.dataset.readyToClose === 'true') closeEditModal(); this.dataset.readyToClose = 'false'">
+
+    <div class="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white"
+         onmousedown="event.stopPropagation()"
+         onclick="event.stopPropagation()">
+
         <div class="mt-3">
             <h3 class="text-lg leading-6 font-medium text-gray-900 mb-2">Edit Product</h3>
             <form id="editProductForm" class="text-left">
@@ -444,13 +563,25 @@
                      <label class="block text-sm font-medium text-gray-700">Volume (L)</label>
                      <input type="number" step="0.01" id="edit_volume" name="unit_volume" class="mt-1 py-2 px-2 block w-full rounded-md border-gray-300 shadow-sm">
                 </div>
+
                 <div class="grid grid-cols-2 gap-3">
                      <div class="mb-3">
-                        <label class="block text-sm font-medium text-gray-700">Safety Stock</label>
+                        <label class="block text-sm font-medium text-gray-700">Est. Daily Usage</label>
+                        <input type="number" step="0.01" id="edit_usage" name="estimated_daily_usage" class="mt-1 py-2 px-2 block w-full rounded-md border-gray-300 shadow-sm">
+                    </div>
+                     <div class="mb-3">
+                        <label class="block text-sm font-medium text-gray-700">Min Order Qty (MOQ)</label>
+                        <input type="number" step="0.01" id="edit_moq" name="moq" class="mt-1 py-2 px-2 block w-full rounded-md border-gray-300 shadow-sm">
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-2 gap-3">
+                     <div class="mb-3">
+                        <label class="block text-sm font-medium text-gray-700">Safety Stock (Days)</label>
                         <input type="number" id="edit_safety" name="safety_stock_days" class="mt-1 py-2 px-2 block w-full rounded-md border-gray-300 shadow-sm">
                     </div>
                      <div class="mb-3">
-                        <label class="block text-sm font-medium text-gray-700">Lead Time</label>
+                        <label class="block text-sm font-medium text-gray-700">Lead Time (Days)</label>
                         <input type="number" id="edit_lead" name="lead_time_days" class="mt-1 py-2 px-2 block w-full rounded-md border-gray-300 shadow-sm">
                     </div>
                 </div>
@@ -468,7 +599,7 @@
 <script>
     var CURRENT_NATURE = "{{ current_nature }}";
     var searchTimer = null;
-    let selectedComponentData = null;
+    var selectedComponentData = null;
 
     // === Search & Filter Logic ===
     function debounceSearch() {
@@ -572,6 +703,8 @@
 
     // === Tab Switching Logic ===
     window.switchTab = function(targetId) {
+        console.log(`cw [Debug] Switching to tab: ${targetId}`);
+
         document.querySelectorAll('.tab-pane').forEach(el => el.classList.add('hidden'));
         document.querySelectorAll('.tab-btn').forEach(el => {
             el.classList.remove('active', 'border-blue-600', 'text-blue-600');
@@ -579,7 +712,12 @@
         });
 
         var targetPane = document.getElementById(targetId);
-        if(targetPane) targetPane.classList.remove('hidden');
+        if(targetPane) {
+            targetPane.classList.remove('hidden');
+            console.log(`   👁️ [Debug] Tab pane ${targetId} is now VISIBLE.`);
+        } else {
+            console.error(`   ❌ [Debug] Tab pane ${targetId} NOT FOUND.`);
+        }
 
         const btn = document.getElementById('btn-' + targetId);
         if(btn) {
@@ -588,6 +726,10 @@
         }
 
         localStorage.setItem('activeInvTab_' + CURRENT_NATURE, targetId);
+
+        // === Force Init on the now-visible tab ===
+        console.log("   🔄 [Debug] Triggering initSortable() for new tab...");
+        initSortable();
     }
 
     if (!window.hasInitializedInvTabs) {
@@ -698,6 +840,10 @@
         const safety = btn.getAttribute('data-safety');
         const lead = btn.getAttribute('data-lead');
 
+        // NEW FIELDS
+        const usage = btn.getAttribute('data-usage');
+        const moq = btn.getAttribute('data-moq');
+
         document.getElementById('edit_product_id').value = id;
 
         // SKU Logic
@@ -746,6 +892,8 @@
         document.getElementById('edit_volume').value = volume;
         document.getElementById('edit_safety').value = safety;
         document.getElementById('edit_lead').value = lead;
+        document.getElementById('edit_usage').value = usage;
+        document.getElementById('edit_moq').value = moq;
 
         document.getElementById('editProductModal').classList.remove('hidden');
     }
@@ -828,30 +976,85 @@
     }
 
     // --- SortableJS ---
-    function initSortable() {
-        var grids = document.querySelectorAll('.sortable-grid');
-        grids.forEach(el => {
-            if(!el.classList.contains('sortable-initialized')) {
-                Sortable.create(el, {
-                    animation: 150,
-                    handle: '.drag-handle',
-                    ghostClass: 'sortable-ghost',
-                    onEnd: function (evt) {
-                        var order = this.toArray();
-                        fetch("{% url 'inventory:product_reorder' %}", {
-                            method: 'POST',
-                            body: JSON.stringify({order: order})
-                        });
-                    }
-                });
-                el.classList.add('sortable-initialized');
-            }
-        });
+    window.initSortable = function() {
+    console.log("🔧 [Debug] initSortable() called.");
+
+    // 1. Safety check
+    if (typeof Sortable === 'undefined') {
+        console.warn("⚠️ [Debug] SortableJS not loaded yet, retrying in 100ms...");
+        setTimeout(window.initSortable, 100);
+        return;
     }
 
-    // Initialize on load
-    initSortable();
-    // === Category Management Logic ===
+    var grids = document.querySelectorAll('.sortable-grid');
+    console.log(`🔎 [Debug] Found ${grids.length} potential grids.`);
+
+    grids.forEach((el, index) => {
+        const gridId = el.getAttribute('data-group-id') || 'Unknown ID';
+        const isInit = el.getAttribute('data-sortable-init') === 'true';
+        const isVisible = el.offsetParent !== null;
+
+        console.log(`   ➡ Grid #${index} (Group: ${gridId}): Init=${isInit}, Visible=${isVisible}`);
+
+        // 2. Prevent re-initialization
+        if (isInit) {
+            console.log(`      ⏭️ [Debug] SKIPPING: Already initialized.`);
+            return;
+        }
+
+        // 3. Skip hidden elements (Crucial for Tabs)
+        if (!isVisible) {
+            console.log(`      🙈 [Debug] SKIPPING: Element is hidden (display: none). Will init when tab opens.`);
+            return;
+        }
+
+        console.log(`      ✅ [Debug] SUCCESS: Initializing Sortable on Grid #${index}...`);
+
+        Sortable.create(el, {
+            group: 'inventory-items',
+            animation: 150,
+            handle: '.drag-handle',
+            ghostClass: 'sortable-ghost',
+            dataIdAttr: 'data-id',
+
+            // Log when dragging actually starts to confirm it's working
+            onStart: function (evt) {
+                console.log("✊ [Debug] Drag started!", evt);
+            },
+
+            onEnd: function (evt) {
+                console.log("🛑 [Debug] Drag ended. Saving order...");
+                var order = this.toArray();
+
+                fetch("{% url 'inventory:product_reorder' %}", {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': '{{ csrf_token }}'
+                    },
+                    body: JSON.stringify({order: order})
+                })
+                .then(response => response.json())
+                .then(data => {
+                    console.log("💾 [Debug] Save response:", data);
+                    if (data.status !== 'ok') {
+                        console.error("Reorder failed:", data);
+                        alert("Failed to save new order.");
+                    }
+                })
+                .catch(error => {
+                    console.error("Network error:", error);
+                });
+            }
+        });
+
+        // Mark as initialized
+        el.setAttribute('data-sortable-init', 'true');
+    });
+}
+
+    // 立即尝试初始化
+    window.initSortable();
 
     // Available categories from server context
     var ALL_CATEGORIES = [
@@ -928,9 +1131,9 @@
         }
     }
 
-    let currentBomProductId = null;
-    let selectedComponentId = null;
-    let bomSearchTimer = null;
+    var currentBomProductId = null;
+    var selectedComponentId = null;
+    var bomSearchTimer = null;
 
     // === Open/Close Modal ===
     function openBomModal(productId, sku, desc) {
@@ -1073,6 +1276,37 @@
                 emptyState.classList.remove('hidden');
             }
         } catch(e) { console.error(e); }
+    }
+
+    async function openForecastModal(productId, sku) {
+        document.getElementById('fc_modal_sku').innerText = sku;
+        document.getElementById('forecastModal').classList.remove('hidden');
+        const tbody = document.getElementById('fc_modal_body');
+        tbody.innerHTML = '<tr><td colspan="3">Loading...</td></tr>';
+
+        // 你需要写一个 API 来获取该产品的 forecast list
+        const res = await fetch(`/forecast/api/list/${productId}/`);
+        const data = await res.json();
+
+        tbody.innerHTML = '';
+        if (data.entries.length > 0) {
+            data.entries.forEach(item => {
+                const row = `
+                    <tr class="border-b">
+                        <td class="px-2 py-2 font-medium">${item.country}</td>
+                        <td class="px-2 py-2">${item.eta_date}</td>
+                        <td class="px-2 py-2 text-right font-bold">${item.quantity}</td>
+                    </tr>
+                `;
+                tbody.innerHTML += row;
+            });
+        } else {
+            tbody.innerHTML = '<tr><td colspan="3" class="text-center py-4 text-gray-400">No forecast data found.</td></tr>';
+        }
+    }
+
+    function closeForecastModal() {
+        document.getElementById('forecastModal').classList.add('hidden');
     }
 
     // === Search Components ===
@@ -1222,17 +1456,29 @@
     }
 
     // Close search dropdown on outside click
+    // Close search dropdown on outside click
     document.addEventListener('click', function(e) {
-        const container = document.getElementById('bom_search_input').parentElement;
-        if (!container.contains(e.target)) {
-            document.getElementById('bom_search_results').classList.add('hidden');
+        const input = document.getElementById('bom_search_input');
+        // Safety check: Only proceed if the input actually exists
+        if (input && input.parentElement) {
+            const container = input.parentElement;
+            if (!container.contains(e.target)) {
+                const results = document.getElementById('bom_search_results');
+                if (results) results.classList.add('hidden');
+            }
         }
     });
 
 </script>
 
-<div id="manageCategoriesModal" class="hidden fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50" onclick="if(event.target === this) closeManageCategoriesModal()">
-    <div class="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white">
+<div id="manageCategoriesModal" class="hidden fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50"
+     onmousedown="this.dataset.readyToClose = 'true'"
+     onclick="if(this.dataset.readyToClose === 'true') closeManageCategoriesModal(); this.dataset.readyToClose = 'false'">
+
+    <div class="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white"
+         onmousedown="event.stopPropagation()"
+         onclick="event.stopPropagation()">
+
         <div class="flex justify-between items-center mb-4 border-b pb-2">
             <h3 class="text-lg leading-6 font-medium text-gray-900">Manage Categories</h3>
             <button onclick="closeManageCategoriesModal()" class="text-gray-400 hover:text-gray-600">
@@ -1240,7 +1486,7 @@
             </button>
         </div>
         <div class="mt-2 max-h-96 overflow-y-auto" id="manage_category_list">
-            </div>
+        </div>
         <div class="mt-4 pt-3 border-t text-right">
             <button onclick="closeManageCategoriesModal()" class="px-4 py-2 bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200">Close</button>
         </div>
@@ -1248,8 +1494,15 @@
 </div>
 
 
-<div id="bomModal" class="hidden fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
-    <div class="relative top-10 mx-auto p-0 border w-[600px] shadow-lg rounded-lg bg-white flex flex-col max-h-[90vh]">
+<div id="bomModal"
+     class="hidden fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50"
+     onmousedown="this.dataset.readyToClose = 'true'"
+     onclick="if(this.dataset.readyToClose === 'true') closeBomModal(); this.dataset.readyToClose = 'false'">
+
+    <div class="relative top-10 mx-auto p-0 border w-[600px] shadow-lg rounded-lg bg-white flex flex-col max-h-[90vh]"
+         onmousedown="event.stopPropagation()"
+         onclick="event.stopPropagation()">
+
         <div class="px-6 py-4 border-b border-gray-100 flex justify-between items-center bg-gray-50 rounded-t-lg">
             <div>
                 <h3 class="text-lg font-bold text-gray-800">Recipe Management</h3>
@@ -1331,7 +1584,7 @@
                     </tr>
                 </thead>
                 <tbody id="bom_list_body" class="bg-white divide-y divide-gray-200">
-                    </tbody>
+                </tbody>
             </table>
 
             <div id="bom_empty_state" class="hidden py-8 text-center text-gray-400">
