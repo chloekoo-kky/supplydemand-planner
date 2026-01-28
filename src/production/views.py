@@ -4,7 +4,10 @@ import json
 from django.shortcuts import render, redirect, get_object_or_404
 from django.http import JsonResponse
 from django.contrib import messages
-from django.db.models import F, Sum, Subquery, OuterRef, Min, Max
+from django.db.models import (
+    F, Sum, Subquery, OuterRef,
+    Min, Max, Q
+)
 from decimal import Decimal
 from django.views.decorators.http import require_POST
 from django.views.decorators.csrf import csrf_exempt
@@ -22,30 +25,49 @@ from .services import (
 def production_dashboard(request):
     """
     Production Overview with Time-Phased Inventory Logic (APS Level 1).
-    Orders are calculated sequentially based on start_date to determine true availability.
+    Includes Search and Date Filtering.
     """
-    # 1. 获取所有关联数据
-    # 按 start_date 排序是关键，确保先生产的先分配库存
+    # === 1. 获取筛选参数 ===
+    search_query = request.GET.get('search', '').strip()
+    date_from = request.GET.get('date_from', '')
+    date_to = request.GET.get('date_to', '')
+    status_filter = request.GET.get('status', '')
+
+    # === 2. 基础 QuerySet ===
     orders = ProductionOrder.objects.select_related('product') \
                                     .prefetch_related('components__component') \
                                     .all().order_by('start_date', 'created_at')
 
+    # 【修复】定义 fgs (Finished Goods)，用于前端的新建工单下拉菜单
     fgs = Product.objects.filter(nature='FG').order_by('sku')
 
-    # 2. 构建初始库存池 (Running Balance)
-    # 获取所有相关原料的当前 SOH (Quantity On Hand)
-    # 注意：我们这里用 SOH (实物库存) 作为起点进行推演，而不只是 Net Available
-    # 因为我们要重新模拟所有 Confirmed/Draft 订单的占用过程
+    # === 3. 应用筛选 ===
+    if search_query:
+        orders = orders.filter(
+            Q(order_number__icontains=search_query) |
+            Q(product__sku__icontains=search_query) |
+            Q(product__description__icontains=search_query)
+        )
+
+    if date_from:
+        orders = orders.filter(start_date__gte=date_from)
+
+    if date_to:
+        orders = orders.filter(start_date__lte=date_to)
+
+    if status_filter:
+        orders = orders.filter(status=status_filter)
+
+    # === 4. 构建库存池 (Inventory Pool) ===
     comp_product_ids = set()
     for o in orders:
         if o.status in ['DRAFT', 'CONFIRMED', 'IN_PROGRESS']:
             for c in o.components.all():
                 comp_product_ids.add(c.component_id)
 
-    inventory_pool = {} # { product_id: float(current_soh) }
+    inventory_pool = {}
 
     if comp_product_ids:
-        # 获取最新快照
         sq = InventorySnapshot.objects.filter(product=OuterRef('product')).order_by('-snapshot_date')
         snapshots = InventorySnapshot.objects.filter(
             pk=Subquery(sq.values('pk')[:1]),
@@ -54,54 +76,39 @@ def production_dashboard(request):
         for snap in snapshots:
             inventory_pool[snap.product_id] = float(snap.quantity_on_hand)
 
-    # 3. 核心算法：Time-Phased Allocation (基于时间的分配)
+    # === 5. Time-Phased Logic 计算 ===
     for order in orders:
-        # 只计算未完成的订单
         if order.status in ['DRAFT', 'CONFIRMED', 'IN_PROGRESS']:
-
-            # 标记该订单整体是否齐套
-            order_is_fully_stocked = True
-
             for comp in order.components.all():
                 pid = comp.component_id
                 required = float(comp.quantity_required)
-
-                # 获取当前池子里的剩余量
                 current_balance = inventory_pool.get(pid, 0.0)
 
-                # 记录给前端显示的“当时可用量”
-                # 这里的 display_stock 代表：轮到这个订单生产时，仓库里还剩多少
                 comp.display_stock = current_balance
 
-                # 判断是否足够
                 if current_balance >= required:
                     comp.is_enough = True
                     comp.shortage = 0
-                    # 扣减库存 (预演)
                     inventory_pool[pid] = current_balance - required
                 else:
                     comp.is_enough = False
                     comp.shortage = required - current_balance
-                    order_is_fully_stocked = False
-                    # 库存耗尽，设为0 (不能扣成负数，否则后续订单显示的 Available 会很奇怪)
                     inventory_pool[pid] = 0
-
         else:
-            # 已完成/取消的订单，不参与计算，或者仅做简单展示
             for comp in order.components.all():
                 comp.is_enough = True
-                comp.display_stock = 0 # 不重要
+                comp.display_stock = 0
 
-    # 4. 如果用户想按倒序查看列表 (UI习惯)，我们可以在计算完后再反转列表
-    # 但保留计算结果（display_stock 已经是计算好的值了）
     orders_list = list(orders)
-    # 比如我们想把最近日期的放前面显示，或者按用户原本的习惯
-    # orders_list.sort(key=lambda x: x.start_date, reverse=True)
 
     context = {
         'orders': orders_list,
-        'fgs': fgs,
-        'page_title': 'Production Orders'
+        'fgs': fgs,  # 现在 fgs 已经定义了
+        'page_title': 'Production Orders',
+        'current_search': search_query,
+        'current_date_from': date_from,
+        'current_date_to': date_to,
+        'current_status': status_filter,
     }
 
     if request.headers.get('x-requested-with') == 'XMLHttpRequest':

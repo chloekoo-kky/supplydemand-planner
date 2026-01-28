@@ -1,106 +1,149 @@
-<div class="space-y-6 p-6">
+<div class="space-y-6 p-6" id="dashboard-content-wrapper">
 
-    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        <div class="bg-white rounded-lg shadow p-5 border-l-4 border-blue-500">
-            <div class="flex justify-between items-center">
-                <div>
-                    <p class="text-sm font-medium text-gray-500">Next Month Forecast</p>
-                    <p class="text-2xl font-bold text-gray-900 mt-1">{{ demand_kpi|floatformat:0 }} <span class="text-sm font-normal text-gray-400">units</span></p>
-                </div>
-                <div class="p-3 bg-blue-50 rounded-full">
-                    <i class="bi bi-bar-chart-line text-blue-600 text-xl"></i>
-                </div>
-            </div>
+    <div class="flex flex-col md:flex-row justify-between items-center gap-4 mb-2">
+        <div>
+            <h2 class="text-2xl font-bold text-gray-800">Forecast & Fulfillment</h2>
+            <p class="text-sm text-gray-500">Overview for <span class="font-bold text-indigo-600" id="currentMonthDisplay">{{ current_month }}</span></p>
         </div>
 
-        <div class="bg-white rounded-lg shadow p-5 border-l-4 border-indigo-500">
-            <div class="flex justify-between items-center">
-                <div>
-                    <p class="text-sm font-medium text-gray-500">MRP Plans Generated</p>
-                    <p class="text-2xl font-bold text-gray-900 mt-1">{{ total_plans }}</p>
-                </div>
-                <div class="p-3 bg-indigo-50 rounded-full">
-                    <i class="bi bi-gear-wide-connected text-indigo-600 text-xl"></i>
-                </div>
-            </div>
-        </div>
+        <div class="flex items-center bg-white rounded-lg shadow-sm border border-gray-200">
+            <button type="button" onclick="window.changeMonth(-1)" class="p-2 hover:bg-gray-100 text-gray-500 hover:text-indigo-600 rounded-l-lg transition border-r border-gray-100" title="Previous Month">
+                <i class="bi bi-chevron-left"></i>
+            </button>
 
-        <div class="bg-white rounded-lg shadow p-5 border-l-4 border-yellow-500">
-            <div class="flex justify-between items-center">
-                <div>
-                    <p class="text-sm font-medium text-gray-500">Allocated FG (Pending)</p>
-                    <p class="text-2xl font-bold text-gray-900 mt-1">{{ total_allocated_qty|floatformat:0 }} <span class="text-sm font-normal text-gray-400">units</span></p>
-                </div>
-                <div class="p-3 bg-yellow-50 rounded-full">
-                    <i class="bi bi-box-seam text-yellow-600 text-xl"></i>
-                </div>
+            <div class="flex items-center px-2">
+                <label for="monthFilter" class="sr-only">Period</label>
+                <input type="month" id="monthFilter" value="{{ current_month }}"
+                       onchange="applyDashboardFilter(this.value)"
+                       class="border-transparent focus:border-transparent focus:ring-0 text-sm text-gray-700 py-1 bg-transparent h-8 w-32 text-center cursor-pointer"
+                       title="Select Month">
             </div>
-        </div>
 
-        <div class="bg-white rounded-lg shadow p-5 border-l-4 border-green-500">
-            <div class="flex justify-between items-center">
-                <div>
-                    <p class="text-sm font-medium text-gray-500">Shipped (This Month)</p>
-                    <p class="text-2xl font-bold text-gray-900 mt-1">{{ shipped_this_month|floatformat:0 }} <span class="text-sm font-normal text-gray-400">units</span></p>
-                </div>
-                <div class="p-3 bg-green-50 rounded-full">
-                    <i class="bi bi-truck text-green-600 text-xl"></i>
-                </div>
-            </div>
+            <button type="button" onclick="window.changeMonth(1)" class="p-2 hover:bg-gray-100 text-gray-500 hover:text-indigo-600 border-l border-gray-100" title="Next Month">
+                <i class="bi bi-chevron-right"></i>
+            </button>
+
+            <button type="button"
+                    onclick="applyDashboardFilter(document.getElementById('monthFilter').value)"
+                    class="p-2 hover:bg-indigo-50 text-indigo-600 hover:text-indigo-700 rounded-r-lg transition border-l border-gray-100"
+                    title="Reload Data">
+                <i class="bi bi-arrow-clockwise"></i>
+            </button>
         </div>
     </div>
 
     <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
 
-        <div class="lg:col-span-2 bg-white rounded-lg shadow overflow-hidden flex flex-col h-[500px]">
+        <div class="lg:col-span-2 bg-white rounded-lg shadow overflow-hidden flex flex-col h-[600px]">
             <div class="px-6 py-4 border-b border-gray-200 bg-gray-50 flex justify-between items-center">
-                <h3 class="text-lg font-bold text-gray-900">
+                <h3 class="text-lg font-bold text-gray-900 flex items-center">
                     <i class="bi bi-box-arrow-right text-gray-500 mr-2"></i>Outbound Queue
                 </h3>
-                <span class="text-xs font-medium bg-yellow-100 text-yellow-800 py-1 px-2 rounded-full">
-                    {{ allocated_demands|length }} Orders Ready
-                </span>
+                <button onclick="openCreateShipmentModal()" class="text-sm bg-blue-600 text-white px-3 py-1.5 rounded hover:bg-blue-700 transition shadow-sm flex items-center">
+                    <i class="bi bi-plus-lg mr-1"></i> New Shipment
+                </button>
             </div>
 
             <div class="flex-1 overflow-auto p-0">
                 <table class="min-w-full text-left text-sm whitespace-nowrap">
                     <thead class="bg-gray-50 text-gray-500 sticky top-0 z-10">
                         <tr>
-                            <th class="px-6 py-3 font-medium">Product</th>
-                            <th class="px-6 py-3 font-medium">Country</th>
-                            <th class="px-6 py-3 font-medium text-right">Qty</th>
-                            <th class="px-6 py-3 font-medium">Allocation Date</th>
-                            <th class="px-6 py-3 font-medium text-right">Action</th>
+                            <th class="px-4 py-3 font-medium">Shipment / Container</th>
+                            <th class="px-4 py-3 font-medium text-center">Destination</th>
+                            <th class="px-4 py-3 font-medium text-center">ETD</th>
+                            <th class="px-4 py-3 font-medium text-right">Items</th>
+                            <th class="px-4 py-3 font-medium text-right">Action</th>
                         </tr>
                     </thead>
-                    <tbody class="divide-y divide-gray-100">
-                        {% for item in allocated_demands %}
-                        <tr class="hover:bg-gray-50 transition-colors group">
-                            <td class="px-6 py-3">
-                                <div class="font-medium text-gray-900">{{ item.product.sku }}</div>
-                                <div class="text-xs text-gray-500">{{ item.product.description|truncatechars:20 }}</div>
-                            </td>
-                            <td class="px-6 py-3 text-gray-600">{{ item.country }}</td>
-                            <td class="px-6 py-3 text-right font-bold text-gray-800">{{ item.quantity|floatformat:0 }}</td>
-                            <td class="px-6 py-3 text-gray-500 text-xs">{{ item.updated_at|date:"Y-m-d" }}</td>
 
-                            <td class="px-6 py-3 text-right">
-                                <button type="button"
-                                        onclick="openShipModal('{{ item.id }}', '{{ item.product.sku }}', '{{ item.quantity|floatformat:0 }}')"
-                                        class="text-green-600 hover:text-green-900 border border-green-200 hover:bg-green-50 rounded px-3 py-1 text-xs font-medium transition-all shadow-sm">
-                                    Ship Out
+                    {% for group in queue_groups %}
+                    <tbody class="border-b border-gray-100 group">
+                        <tr class="bg-gray-50/50 hover:bg-blue-50 cursor-pointer transition-colors" onclick="toggleShipmentDetails('ship-{{ forloop.counter }}')">
+                            <td class="px-4 py-3 font-bold text-gray-800 flex items-center gap-2">
+                                <i id="icon-ship-{{ forloop.counter }}" class="bi bi-chevron-right text-gray-400 transition-transform text-xs"></i>
+                                {% if group.shipment %}
+                                    <i class="bi bi-box-seam text-blue-500"></i> {{ group.shipment.reference }}
+                                {% else %}
+                                    <span class="text-gray-400 italic"><i class="bi bi-question-circle mr-1"></i> Unassigned</span>
+                                {% endif %}
+                            </td>
+                            <td class="px-4 py-3 text-center text-gray-600 font-medium">
+                                {% if group.shipment and group.shipment.destination %}
+                                    <span class="bg-purple-100 text-purple-800 px-2 py-0.5 rounded-full text-xs">{{ group.shipment.destination }}</span>
+                                {% elif group.shipment %}
+                                    <span class="text-gray-400 text-xs">Any</span>
+                                {% else %} - {% endif %}
+                            </td>
+                            <td class="px-4 py-3 text-center text-gray-600">
+                                {% if group.shipment %}{{ group.shipment.etd|date:"d/m/Y" }}{% else %}-{% endif %}
+                            </td>
+                            <td class="px-4 py-3 text-right">
+                                <span class="bg-gray-200 text-gray-700 px-2 py-0.5 rounded-full text-xs">{{ group.total_qty|floatformat:0 }} units</span>
+                            </td>
+                            <td class="px-4 py-3 text-right" onclick="event.stopPropagation()">
+                                {% if group.shipment %}
+                                <button onclick="openEditShipmentModal('{{ group.shipment.id }}', '{{ group.shipment.reference }}', '{{ group.shipment.etd|date:'Y-m-d' }}', '{{ group.shipment.destination|default:'' }}')"
+                                        class="text-gray-400 hover:text-blue-600 transition">
+                                    <i class="bi bi-pencil-square"></i>
                                 </button>
+                                {% endif %}
                             </td>
                         </tr>
-                        {% empty %}
+
+                        <tr id="ship-{{ forloop.counter }}" class="hidden bg-white">
+                            <td colspan="5" class="p-0">
+                                <div class="bg-gray-50 px-8 py-2 border-t border-gray-100 shadow-inner">
+                                    <table class="w-full text-xs text-gray-600">
+                                        <thead class="text-gray-400 uppercase">
+                                            <tr>
+                                                <th class="py-1">Month</th>
+                                                <th class="py-1">Product</th>
+                                                <th class="py-1">Country</th>
+                                                <th class="py-1 text-right">Total Order</th>
+                                                <th class="py-1 text-right">Allocated</th>
+                                                <th class="py-1 text-right">Action</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody class="divide-y divide-gray-100">
+                                            {% for item in group.items %}
+                                            <tr class="hover:bg-gray-100">
+                                                <td class="py-2 font-mono text-gray-500">{{ item.period_date|date:"Y-m" }}</td>
+
+                                                <td class="py-2 font-medium">{{ item.product.sku }}</td>
+
+                                                <td class="py-2">
+                                                    {{ item.country }}
+                                                    {% if group.shipment and group.shipment.destination %}
+                                                        {% if group.shipment.destination|lower != item.country|lower %}
+                                                            <span class="text-red-500 font-bold ml-1" title="Mismatch!"><i class="bi bi-exclamation-triangle-fill"></i></span>
+                                                        {% endif %}
+                                                    {% endif %}
+                                                </td>
+
+                                                <td class="py-2 text-right text-gray-500">{{ item.quantity|floatformat:0 }}</td>
+
+                                                <td class="py-2 text-right font-bold text-blue-700">{{ item.allocated_qty|floatformat:0 }}</td>
+
+                                                <td class="py-2 text-right">
+                                                    </td>
+                                            </tr>
+                                            {% endfor %}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </td>
+                        </tr>
+                    </tbody>
+                    {% empty %}
+                    <tbody>
                         <tr>
                             <td colspan="5" class="px-6 py-12 text-center text-gray-500">
-                                <i class="bi bi-check-circle text-4xl mb-3 block text-gray-300"></i>
-                                All allocated orders have been shipped!
+                                <i class="bi bi-inboxes text-4xl mb-3 block text-gray-300"></i>
+                                No pending allocations for {{ current_month }}.
                             </td>
                         </tr>
-                        {% endfor %}
                     </tbody>
+                    {% endfor %}
                 </table>
             </div>
         </div>
@@ -111,20 +154,21 @@
                     <h3 class="text-lg font-bold text-gray-900">MRP Engine</h3>
                 </div>
                 <div class="p-6">
-                    <p class="text-sm text-gray-500 mb-4">Calculate net requirements based on latest forecast and inventory.</p>
-                    <button onclick="openMrpModal()" class="w-full flex justify-center items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none">
+                    <p class="text-sm text-gray-500 mb-4">Calculate net requirements based on forecast vs stock.</p>
+                    <button onclick="openMrpModal()" class="w-full flex justify-center items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 transition">
                         <i class="bi bi-cpu mr-2"></i> Run MRP
                     </button>
                 </div>
             </div>
 
             <div class="bg-white rounded-lg shadow overflow-hidden flex flex-col h-[300px]">
-                <div class="px-6 py-4 border-b border-gray-200 bg-gray-50">
+                <div class="px-6 py-4 border-b border-gray-200 bg-gray-50 flex justify-between items-center">
                     <h3 class="text-lg font-bold text-gray-900">Plan History</h3>
+                    <span class="text-xs bg-gray-200 text-gray-600 py-0.5 px-2 rounded-full">{{ total_plans }}</span>
                 </div>
                 <ul class="divide-y divide-gray-200 overflow-y-auto flex-1">
                     {% for plan in plans %}
-                    <li class="px-6 py-4 hover:bg-gray-50">
+                    <li class="px-6 py-4 hover:bg-gray-50 transition">
                         <div class="flex items-center justify-between">
                             <div class="flex flex-col">
                                 <span class="text-sm font-medium text-gray-900">{{ plan.name }}</span>
@@ -142,68 +186,141 @@
     </div>
 </div>
 
-<div id="shipModal" class="relative z-50 hidden" aria-labelledby="modal-title" role="dialog" aria-modal="true">
+<div id="createShipmentModal" class="relative z-50 hidden" aria-labelledby="modal-title" role="dialog" aria-modal="true">
     <div class="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity"></div>
     <div class="fixed inset-0 z-10 w-screen overflow-y-auto">
         <div class="flex min-h-full items-end justify-center p-4 text-center sm:items-center sm:p-0">
             <div class="relative transform overflow-hidden rounded-lg bg-white text-left shadow-xl transition-all sm:my-8 sm:w-full sm:max-w-sm">
-
-                <form method="POST">
+                <form action="{% url 'forecast:create_shipment' %}" method="POST">
                     {% csrf_token %}
-                    <input type="hidden" name="ship_item" value="1">
-                    <input type="hidden" name="demand_id" id="modalDemandId">
-
                     <div class="bg-white px-4 pb-4 pt-5 sm:p-6 sm:pb-4">
-                        <div class="sm:flex sm:items-start">
-                            <div class="mx-auto flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-full bg-green-100 sm:mx-0 sm:h-10 sm:w-10">
-                                <i class="bi bi-truck text-green-600 text-lg"></i>
+                        <h3 class="text-base font-semibold leading-6 text-gray-900 mb-4">Create New Shipment</h3>
+                        <div class="space-y-3">
+                            <div>
+                                <label class="block text-xs font-medium text-gray-700">Container / Reference</label>
+                                <input type="text" name="reference" required placeholder="e.g. CONT-ABC-123" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm border p-2">
                             </div>
-                            <div class="mt-3 text-center sm:ml-4 sm:mt-0 sm:text-left w-full">
-                                <h3 class="text-base font-semibold leading-6 text-gray-900" id="modal-title">Confirm Shipment</h3>
-                                <div class="mt-2">
-                                    <p class="text-sm text-gray-500">
-                                        You are shipping <span id="modalSku" class="font-bold text-gray-800"></span>
-                                        (<span id="modalQty" class="font-bold text-gray-800"></span> units).
-                                    </p>
-
-                                    <div class="mt-4">
-                                        <label for="shipment_date" class="block text-sm font-medium text-gray-700">Outbound Date</label>
-                                        <input type="date" name="shipment_date" id="shipment_date" required
-                                               value="{{ today_date }}"
-                                               class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm border p-2">
-                                        <p class="text-xs text-gray-400 mt-1">Inventory will be deducted on this date.</p>
-                                    </div>
-                                </div>
+                            <div>
+                                <label class="block text-xs font-medium text-gray-700">Destination (Country/Customer)</label>
+                                <input type="text" name="destination" placeholder="Optional (Restricts Allocation)" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm border p-2">
+                                <p class="text-[10px] text-gray-400 mt-1">If set, only items for this country can be added.</p>
+                            </div>
+                            <div>
+                                <label class="block text-xs font-medium text-gray-700">ETD Date</label>
+                                <input type="date" name="etd" required class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm border p-2">
                             </div>
                         </div>
                     </div>
                     <div class="bg-gray-50 px-4 py-3 sm:flex sm:flex-row-reverse sm:px-6">
-                        <button type="submit" class="inline-flex w-full justify-center rounded-md bg-green-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-green-500 sm:ml-3 sm:w-auto">Confirm</button>
-                        <button type="button" onclick="closeShipModal()" class="mt-3 inline-flex w-full justify-center rounded-md bg-white px-3 py-2 text-sm font-semibold text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50 sm:mt-0 sm:w-auto">Cancel</button>
+                        <button type="submit" class="inline-flex w-full justify-center rounded-md bg-blue-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-500 sm:ml-3 sm:w-auto">Create</button>
+                        <button type="button" onclick="document.getElementById('createShipmentModal').classList.add('hidden')" class="mt-3 inline-flex w-full justify-center rounded-md bg-white px-3 py-2 text-sm font-semibold text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50 sm:mt-0 sm:w-auto">Cancel</button>
                     </div>
                 </form>
+            </div>
+        </div>
+    </div>
+</div>
 
+<div id="editShipmentModal" class="relative z-50 hidden" aria-labelledby="modal-title" role="dialog" aria-modal="true">
+    <div class="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity"></div>
+    <div class="fixed inset-0 z-10 w-screen overflow-y-auto">
+        <div class="flex min-h-full items-end justify-center p-4 text-center sm:items-center sm:p-0">
+            <div class="relative transform overflow-hidden rounded-lg bg-white text-left shadow-xl transition-all sm:my-8 sm:w-full sm:max-w-sm">
+                <form id="editShipmentForm" method="POST">
+                    {% csrf_token %}
+                    <div class="bg-white px-4 pb-4 pt-5 sm:p-6 sm:pb-4">
+                        <h3 class="text-base font-semibold leading-6 text-gray-900 mb-4">Edit Shipment</h3>
+                        <div class="space-y-3">
+                            <div>
+                                <label class="block text-xs font-medium text-gray-700">Container / Reference</label>
+                                <input type="text" name="reference" id="editRef" required class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm border p-2">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-medium text-gray-700">Destination</label>
+                                <input type="text" name="destination" id="editDest" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm border p-2">
+                                <p class="text-[10px] text-red-400 mt-1">Warning: Changing this may conflict with existing items.</p>
+                            </div>
+                            <div>
+                                <label class="block text-xs font-medium text-gray-700">ETD Date</label>
+                                <input type="date" name="etd" id="editEtd" required class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm border p-2">
+                            </div>
+                        </div>
+                    </div>
+                    <div class="bg-gray-50 px-4 py-3 sm:flex sm:flex-row-reverse sm:px-6">
+                        <button type="submit" class="inline-flex w-full justify-center rounded-md bg-blue-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-500 sm:ml-3 sm:w-auto">Save Changes</button>
+                        <button type="button" onclick="document.getElementById('editShipmentModal').classList.add('hidden')" class="mt-3 inline-flex w-full justify-center rounded-md bg-white px-3 py-2 text-sm font-semibold text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50 sm:mt-0 sm:w-auto">Cancel</button>
+                    </div>
+                </form>
             </div>
         </div>
     </div>
 </div>
 
 {% include 'forecast/partials/run_mrp_modal.html' %}
-
 <script>
+    function applyDashboardFilter(monthStr) {
+        if(!monthStr) return;
+        document.cookie = "forecast_dashboard_month=" + monthStr + "; path=/; SameSite=Lax";
+        const url = `${window.location.pathname}?month=${monthStr}`;
+        fetch(url, { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+        .then(response => response.text())
+        .then(html => {
+            const container = document.getElementById('dashboard-content');
+            if (container) container.innerHTML = html;
+        })
+        .catch(err => console.error(err));
+    }
+
+    // [NEW] Quick Month Navigation
+    window.changeMonth = function(offset) {
+        const input = document.getElementById('monthFilter');
+        let currentVal = input.value;
+        if (!currentVal) {
+            const now = new Date();
+            currentVal = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+        }
+        const [year, month] = currentVal.split('-').map(Number);
+        const dateObj = new Date(year, month - 1 + offset, 1);
+        const newYear = dateObj.getFullYear();
+        const newMonth = String(dateObj.getMonth() + 1).padStart(2, '0');
+        const newVal = `${newYear}-${newMonth}`;
+        input.value = newVal;
+        applyDashboardFilter(newVal);
+    }
+
+    function toggleShipmentDetails(id) {
+        const row = document.getElementById(id);
+        const icon = document.getElementById('icon-' + id);
+        if (row.classList.contains('hidden')) {
+            row.classList.remove('hidden');
+            if(icon) icon.classList.add('rotate-90');
+        } else {
+            row.classList.add('hidden');
+            if(icon) icon.classList.remove('rotate-90');
+        }
+    }
+
+    function openCreateShipmentModal() {
+        document.getElementById('createShipmentModal').classList.remove('hidden');
+    }
+
+    function openEditShipmentModal(id, ref, etd, dest) {
+        const modal = document.getElementById('editShipmentModal');
+        const form = document.getElementById('editShipmentForm');
+
+        form.action = `/forecast/shipment/${id}/edit/`;
+        document.getElementById('editRef').value = ref;
+        document.getElementById('editEtd').value = etd;
+        document.getElementById('editDest').value = dest;
+
+        modal.classList.remove('hidden');
+    }
+
     function openMrpModal() {
-        const modal = document.getElementById('runMrpModal'); // Ensure your MRP modal has this ID
+        const modal = document.getElementById('runMrpModal');
         if(modal) modal.classList.remove('hidden');
     }
-
-    function openShipModal(id, sku, qty) {
-        document.getElementById('modalDemandId').value = id;
-        document.getElementById('modalSku').innerText = sku;
-        document.getElementById('modalQty').innerText = qty;
-        document.getElementById('shipModal').classList.remove('hidden');
-    }
-
-    function closeShipModal() {
-        document.getElementById('shipModal').classList.add('hidden');
-    }
 </script>
+<style>
+    .rotate-90 { transform: rotate(90deg); }
+</style>

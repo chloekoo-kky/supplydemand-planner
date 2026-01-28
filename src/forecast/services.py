@@ -7,7 +7,7 @@ from decimal import Decimal, InvalidOperation
 
 from inventory.models import Product, ProductAlias
 from production.models import ProductionOrder
-from .models import MarketDemand, ForecastPlan, ForecastEntry
+from .models import MarketDemand, ForecastPlan, ForecastEntry, OutboundShipment
 
 def process_demand_file(file_obj, country, demand_type='FORECAST'):
     """
@@ -186,20 +186,16 @@ def create_po_from_plan(plan_id):
     return f"成功生成 {count} 张生产工单 (Draft)。"
 
 
-def allocate_stock_for_demand(demand_id, request_qty):
+def allocate_stock_for_demand(demand_id, request_qty, shipment_id=None):
     """
-    [Updated] Allocates specific quantity of FG stock.
-    Fix: Moves select_for_update INSIDE the atomic block.
+    [Updated] Validates Destination Match before assignment.
     """
-    # [关键修复] 必须先开启事务，才能使用 select_for_update
     with transaction.atomic():
         try:
-            # 1. 在事务内部查询并锁定记录
             demand = MarketDemand.objects.select_related('product').select_for_update().get(pk=demand_id)
         except MarketDemand.DoesNotExist:
             return False, "Demand record not found."
 
-        # 2. 各种验证 (Validations)
         if demand.demand_type != 'ACTUAL':
             return False, "Only 'Actual Sales' can be allocated."
 
@@ -215,32 +211,42 @@ def allocate_stock_for_demand(demand_id, request_qty):
         if new_alloc_qty > demand.quantity:
             return False, f"Cannot allocate {new_alloc_qty} (Max Demand: {demand.quantity})."
 
-        # 3. 获取并锁定库存快照 (防止并发超卖)
-        # 使用 select_for_update() 锁定最新的库存快照
-        snapshot = demand.product.snapshots.select_for_update().order_by('-snapshot_date').first()
+        # Handle Shipment Assignment
+        if shipment_id:
+            try:
+                shipment = OutboundShipment.objects.get(pk=shipment_id)
 
+                # [NEW Validation Logic]
+                # If shipment has a specific destination, the demand's country must match it.
+                if shipment.destination:
+                    # Case-insensitive comparison
+                    ship_dest = shipment.destination.strip().lower()
+                    demand_dest = demand.country.strip().lower()
+
+                    if ship_dest != demand_dest:
+                        return False, f"Error: Container '{shipment.reference}' is restricted to {shipment.destination}. This item is for {demand.country}."
+
+                demand.shipment = shipment
+            except OutboundShipment.DoesNotExist:
+                return False, "Selected shipment does not exist."
+        elif shipment_id == "":
+            demand.shipment = None
+
+        # Check Stock
+        snapshot = demand.product.snapshots.select_for_update().order_by('-snapshot_date').first()
         if not snapshot:
             return False, f"No inventory snapshot found for {demand.product.sku}."
 
-        # 4. 执行更新逻辑
-        # Calculate Delta (New - Old)
         delta = new_alloc_qty - demand.allocated_qty
 
-        if delta == 0:
-            return True, "Allocation quantity unchanged."
-
-        # Check availability only if we are INCREASING allocation
         if delta > 0:
-            # Available = On Hand - Reserved
             available_qty = snapshot.quantity_on_hand - snapshot.quantity_reserved
             if available_qty < delta:
-                return False, f"Insufficient stock to add {delta:g}. Available: {available_qty:g}."
+                return False, f"Insufficient stock. Available: {available_qty:g}, Need: {delta:g}"
 
-        # Update Inventory
         snapshot.quantity_reserved += delta
         snapshot.save()
 
-        # Update Demand Record
         demand.allocated_qty = new_alloc_qty
         demand.is_allocated = (new_alloc_qty > 0)
         demand.save()

@@ -3,6 +3,7 @@ import sys
 import django
 import pandas as pd
 import random
+import time
 from datetime import datetime, date
 from dateutil.relativedelta import relativedelta
 
@@ -17,7 +18,6 @@ django.setup()
 from inventory.models import Product
 
 # --- 2. Configuration ---
-# Generate forecast for the next X months
 MONTHS_TO_GENERATE = 6
 
 def get_valid_fg_products():
@@ -25,50 +25,49 @@ def get_valid_fg_products():
     Fetches the actual Product objects for Finished Goods (FG).
     """
     products = list(Product.objects.filter(nature='FG'))
-
     if not products:
         print("❌ Error: No 'FG' (Finished Goods) found in the database.")
-        print("   Please run the inventory import first.")
         sys.exit(1)
-
-    print(f"✅ Found {len(products)} valid FG items.")
     return products
 
 def generate_wide_format_forecast():
     """
-    Generates a Matrix (Wide Format) dataset:
-    SKU | Name | 2026-02-01 | 2026-03-01 | ...
+    Generates a Matrix (Wide Format) dataset.
     """
+    # [关键修改] 强制重置随机数种子，使用当前时间戳
+    random.seed(datetime.now().timestamp())
+
     products = get_valid_fg_products()
 
-    # 1. Determine the date columns (Next 6 months, starting next month)
     today = date.today()
-    start_month = today.replace(day=1) + relativedelta(months=1) # Start next month
+    start_month = today.replace(day=1) + relativedelta(months=1)
 
     date_columns = []
     for i in range(MONTHS_TO_GENERATE):
         current_month = start_month + relativedelta(months=i)
-        # Use YYYY-MM-DD format as it's safe for pd.to_datetime
         date_columns.append(current_month.strftime('%Y-%m-%d'))
 
     data = []
-
     print(f"Generating forecast for months: {date_columns}")
 
-    # 2. Build rows per SKU
     for product in products:
         row = {
             'SKU': product.sku,
-            'Product Name': product.description, # Optional, helps readability
+            'Product Name': product.description,
         }
 
-        # 3. Fill in random demand for each month
+        # [逻辑优化] 让每个SKU也有点“个性”，不仅仅是纯随机
+        # 为每个产品分配一个“基础销量”，避免所有产品看起来都一样
+        base_volume = random.randint(10, 100)
+
         for month_col in date_columns:
-            # Random logic: 30% chance of 0 demand, otherwise 50-500 units
+            # 30% chance of 0 demand
             if random.random() < 0.3:
                 qty = 0
             else:
-                qty = random.randint(5, 50) * 10 # round numbers e.g., 50, 60... 500
+                # 波动范围在 base_volume 的 50% ~ 150% 之间
+                variance = random.uniform(0.5, 1.5)
+                qty = int(base_volume * variance) * 10
 
             row[month_col] = qty
 
@@ -77,36 +76,23 @@ def generate_wide_format_forecast():
     return data, date_columns
 
 def save_to_excel(data, date_cols, filename="sales_forecast_sample.xlsx"):
-    if not data:
-        return
-
+    if not data: return
     df = pd.DataFrame(data)
-
-    # Reorder columns to ensure SKU and Name are first
     cols = ['SKU', 'Product Name'] + date_cols
     df = df[cols]
 
     try:
         file_path = os.path.join(current_dir, filename)
+        # 尝试写入，如果文件被打开会报错
         df.to_excel(file_path, index=False)
         print(f"\n✅ File Generated Successfully: {file_path}")
         print(f"   - Rows: {len(data)}")
-        print(f"   - Months: {', '.join(date_cols)}")
+    except PermissionError:
+        print(f"\n❌ Error: Cannot write to '{filename}'.")
+        print("   👉 Please CLOSE the Excel file and try again.")
     except Exception as e:
         print(f"❌ Failed to save Excel file: {e}")
 
 if __name__ == "__main__":
-    try:
-        forecast_data, cols = generate_wide_format_forecast()
-        save_to_excel(forecast_data, cols)
-
-        print("\n--- How to Use ---")
-        print("1. Go to your Web UI -> Forecast Dashboard")
-        print("2. Click 'Import Demand'")
-        print("3. In the form:")
-        print("   - Country: Type 'Malaysia' (or any target market)")
-        print("   - File: Upload 'import_demand_sample.xlsx'")
-        print("4. Click Submit.")
-
-    except Exception as e:
-        print(f"❌ Unexpected Error: {e}")
+    forecast_data, cols = generate_wide_format_forecast()
+    save_to_excel(forecast_data, cols)

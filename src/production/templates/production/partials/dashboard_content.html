@@ -53,7 +53,7 @@
     }
 </style>
 
-<div class="mb-6 flex flex-col md:flex-row justify-between items-center gap-4">
+<div class="mb-6 flex flex-col xl:flex-row justify-between items-start xl:items-center gap-4">
     <div class="flex items-center gap-3">
         <h2 class="text-xl font-bold text-slate-800">Production Orders</h2>
         <span class="px-2.5 py-0.5 rounded-full bg-blue-50 text-blue-700 text-xs font-semibold border border-blue-100">
@@ -61,18 +61,42 @@
         </span>
     </div>
 
-    <div class="flex space-x-2">
-        <button onclick="window.openEstimatorModal()"
-                class="bg-white text-indigo-600 border border-indigo-600 hover:bg-indigo-50 px-4 py-2 rounded-lg text-sm font-medium shadow-sm transition flex items-center">
-            <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z"></path></svg>
-            Estimator
-        </button>
+    <div class="flex flex-col md:flex-row gap-3 w-full xl:w-auto">
+        <form id="prodFilterForm" class="flex flex-wrap gap-2 items-center bg-white p-1.5 rounded-lg border border-slate-200 shadow-sm" onsubmit="event.preventDefault(); window.applyFilters();">
+            <div class="relative">
+                <span class="absolute inset-y-0 left-0 flex items-center pl-2 text-slate-400">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
+                </span>
+                <input type="text" id="filter_search" placeholder="Search PO, SKU..."
+                       value="{{ current_search }}"
+                       class="pl-8 pr-3 py-1.5 text-sm border-slate-300 rounded-md focus:ring-indigo-500 focus:border-indigo-500 w-36 md:w-48">
+            </div>
 
-        <button onclick="document.getElementById('createModal').classList.remove('hidden')"
-                class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg text-sm font-medium shadow-sm transition flex items-center">
-            <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
-            New Order
-        </button>
+            <input type="date" id="filter_date_from" value="{{ current_date_from }}" class="py-1.5 px-2 text-sm border-slate-300 rounded-md focus:ring-indigo-500 focus:border-indigo-500 text-slate-600" title="Start Date">
+            <span class="text-slate-400 text-xs">-</span>
+            <input type="date" id="filter_date_to" value="{{ current_date_to }}" class="py-1.5 px-2 text-sm border-slate-300 rounded-md focus:ring-indigo-500 focus:border-indigo-500 text-slate-600" title="End Date">
+
+            <button type="submit" class="bg-slate-100 hover:bg-slate-200 text-slate-600 px-3 py-1.5 rounded-md text-sm font-medium transition-colors">
+                Filter
+            </button>
+             <button type="button" onclick="window.resetFilters()" class="text-slate-400 hover:text-red-500 px-2 text-sm" title="Clear Filters">
+                ✕
+            </button>
+        </form>
+
+        <div class="flex gap-2">
+            <button onclick="window.openEstimatorModal()"
+                    class="bg-white text-indigo-600 border border-indigo-600 hover:bg-indigo-50 px-4 py-2 rounded-lg text-sm font-medium shadow-sm transition flex items-center whitespace-nowrap">
+                <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z"></path></svg>
+                Estimator
+            </button>
+
+            <button onclick="document.getElementById('createModal').classList.remove('hidden')"
+                    class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg text-sm font-medium shadow-sm transition flex items-center whitespace-nowrap">
+                <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
+                New Order
+            </button>
+        </div>
     </div>
 </div>
 
@@ -350,9 +374,10 @@
                                 <div id="est_product_dropdown" class="search-dropdown hidden">
                                     {% for fg in fgs %}
                                     <div class="search-option"
-                                            data-id="{{ fg.id }}"
-                                            data-search="{{ fg.sku|lower }} {{ fg.description|lower }}"
-                                            onclick="window.selectEstProduct('{{ fg.id|escapejs }}', '{{ fg.sku|escapejs }}')"> <div class="font-bold text-slate-700">{{ fg.sku }}</div>
+                                         data-id="{{ fg.id }}"
+                                         data-search="{{ fg.sku|lower }} {{ fg.description|lower }}"
+                                         onclick="window.selectEstProduct('{{ fg.id|escapejs }}', '{{ fg.sku|escapejs }}')">
+                                        <div class="font-bold text-slate-700">{{ fg.sku }}</div>
                                         <div class="text-xs text-slate-500 truncate">{{ fg.description }}</div>
                                     </div>
                                     {% endfor %}
@@ -413,6 +438,41 @@
         }
     };
 
+    // --- NEW: Filter Logic (AJAX) ---
+    window.applyFilters = function() {
+        const search = document.getElementById('filter_search').value;
+        const dateFrom = document.getElementById('filter_date_from').value;
+        const dateTo = document.getElementById('filter_date_to').value;
+
+        const params = new URLSearchParams();
+        if(search) params.append('search', search);
+        if(dateFrom) params.append('date_from', dateFrom);
+        if(dateTo) params.append('date_to', dateTo);
+
+        // Fetch partial content
+        fetch(`${window.location.pathname}?${params.toString()}`, {
+            headers: {
+                'X-Requested-With': 'XMLHttpRequest'
+            }
+        })
+        .then(response => response.text())
+        .then(html => {
+            const container = document.getElementById('dashboard-content');
+            if(container) {
+                container.innerHTML = html;
+            } else {
+                window.location.href = `${window.location.pathname}?${params.toString()}`;
+            }
+        });
+    };
+
+    window.resetFilters = function() {
+        document.getElementById('filter_search').value = '';
+        document.getElementById('filter_date_from').value = '';
+        document.getElementById('filter_date_to').value = '';
+        window.applyFilters();
+    };
+
     // 2. Estimator Logic
     window.openEstimatorModal = function() {
         const modal = document.getElementById('estimatorModal');
@@ -433,31 +493,39 @@
     const options = document.querySelectorAll('.search-option');
     const noResults = document.getElementById('est_no_results');
 
-    searchInput.addEventListener('focus', () => {
-        dropdown.classList.remove('hidden');
-    });
-
-    searchInput.addEventListener('input', (e) => {
-        const term = e.target.value.toLowerCase();
-        let visibleCount = 0;
-
-        options.forEach(opt => {
-            const searchData = opt.dataset.search;
-            if (searchData.includes(term)) {
-                opt.classList.remove('hidden');
-                visibleCount++;
-            } else {
-                opt.classList.add('hidden');
-            }
+    if (searchInput) {
+        searchInput.addEventListener('focus', () => {
+            dropdown.classList.remove('hidden');
         });
 
-        if (visibleCount === 0) {
-            noResults.classList.remove('hidden');
-        } else {
-            noResults.classList.add('hidden');
-        }
-        dropdown.classList.remove('hidden');
-    });
+        searchInput.addEventListener('input', (e) => {
+            const term = e.target.value.toLowerCase();
+            let visibleCount = 0;
+
+            options.forEach(opt => {
+                const searchData = opt.dataset.search;
+                if (searchData.includes(term)) {
+                    opt.classList.remove('hidden');
+                    visibleCount++;
+                } else {
+                    opt.classList.add('hidden');
+                }
+            });
+
+            if (visibleCount === 0) {
+                noResults.classList.remove('hidden');
+            } else {
+                noResults.classList.add('hidden');
+            }
+            dropdown.classList.remove('hidden');
+        });
+
+        document.addEventListener('click', (e) => {
+            if (!searchInput.contains(e.target) && !dropdown.contains(e.target)) {
+                dropdown.classList.add('hidden');
+            }
+        });
+    }
 
     window.selectEstProduct = function(id, sku) {
         document.getElementById('est_product_id').value = id;
@@ -466,11 +534,6 @@
         window.runEstimation();
     };
 
-    document.addEventListener('click', (e) => {
-        if (!searchInput.contains(e.target) && !dropdown.contains(e.target)) {
-            dropdown.classList.add('hidden');
-        }
-    });
 
     // 3. Edit Quantity Logic
     window.openEditQuantityModal = function(id, qty, po) {
@@ -526,7 +589,6 @@
                         ? `<span class="bg-red-100 text-red-700 px-2 py-0.5 rounded text-[10px] font-bold">SHORT</span>`
                         : `<span class="bg-green-100 text-green-700 px-2 py-0.5 rounded text-[10px] font-bold">OK</span>`;
 
-                    // UPDATED: Show Projected Available
                     tbody.innerHTML += `
                         <tr class="${isShort ? 'bg-red-50/50' : ''}">
                             <td class="py-2 pl-2 font-medium text-slate-700">${comp.sku}</td>
@@ -538,18 +600,20 @@
             });
     };
 
-    // 4. Init Date Fields
-    const dateFields = document.querySelectorAll('input[type="date"]');
+    // 4. Init Date Fields (Auto-fill Today for Create & Estimator only)
+    // 专门选择 createModal 和 estimatorModal 中的日期输入框，避免影响 Filter 的日期框
+    const dateFields = document.querySelectorAll('#createModal input[type="date"], #estimatorModal input[type="date"]');
     const today = new Date().toISOString().split('T')[0];
     dateFields.forEach(f => { if(!f.value) f.value = today; });
 
     // 5. Handle ESC
     document.addEventListener('keydown', function(e) {
         if (e.key === "Escape") {
-            window.closeEstimatorModal();
+            if(window.closeEstimatorModal) window.closeEstimatorModal();
             if(window.closeEditStatusModal) window.closeEditStatusModal();
-            window.closeEditQuantityModal();
-            document.getElementById('createModal').classList.add('hidden');
+            if(window.closeEditQuantityModal) window.closeEditQuantityModal();
+            const createModal = document.getElementById('createModal');
+            if(createModal) createModal.classList.add('hidden');
         }
     });
 

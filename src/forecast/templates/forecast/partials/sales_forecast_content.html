@@ -17,10 +17,13 @@
                 </ol>
             </nav>
             <h2 class="text-2xl font-bold text-gray-900">Sales Forecast Data</h2>
-            <p class="text-gray-500 text-sm">Consolidated view by Product & Period.</p>
+            <p class="text-gray-500 text-sm">
+                Overview for <span class="font-bold text-indigo-600">{% if current_month_filter %}{{ current_month_filter }}{% else %}All Time{% endif %}</span>
+            </p>
         </div>
 
         <div class="flex flex-col sm:flex-row gap-3 items-end sm:items-center">
+
             <div class="relative">
                 <input type="text"
                        id="searchInput"
@@ -38,13 +41,84 @@
                 {% endif %}
             </div>
 
+            <div class="flex items-center bg-white rounded-lg shadow-sm border border-gray-200">
+                <button type="button" onclick="window.changeMonth(-1)" class="p-2 hover:bg-gray-100 text-gray-500 hover:text-indigo-600 rounded-l-lg transition border-r border-gray-100" title="Previous Month">
+                    <i class="bi bi-chevron-left"></i>
+                </button>
+
+                <div class="flex items-center px-2">
+                    <label for="monthFilter" class="sr-only">Period</label>
+                    <input type="month"
+                           id="monthFilter"
+                           value="{{ current_month_filter }}"
+                           onchange="window.doMonthFilter(this.value)"
+                           class="border-transparent focus:border-transparent focus:ring-0 text-sm text-gray-700 py-1 bg-transparent h-8 w-32 text-center cursor-pointer"
+                           title="Select Month">
+                </div>
+
+                <button type="button" onclick="window.changeMonth(1)" class="p-2 hover:bg-gray-100 text-gray-500 hover:text-indigo-600 border-l border-gray-100" title="Next Month">
+                    <i class="bi bi-chevron-right"></i>
+                </button>
+
+                <button onclick="window.doMonthFilter(document.getElementById('monthFilter').value)"
+                        class="p-2 hover:bg-indigo-50 text-indigo-600 hover:text-indigo-700 rounded-r-lg transition border-l border-gray-100"
+                        title="Reload Data">
+                    <i class="bi bi-arrow-clockwise"></i>
+                </button>
+            </div>
+
             <div class="flex space-x-2">
                 <button type="button" onclick="window.openForecastImportModal('FORECAST')" class="px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-md shadow-sm hover:bg-gray-50 flex items-center text-sm font-medium">
-                    <i class="bi bi-graph-up-arrow mr-2 text-blue-600"></i> Import Forecast
+                    <i class="bi bi-graph-up-arrow mr-2 text-blue-600"></i> Import
                 </button>
                 <button type="button" onclick="window.openForecastImportModal('ACTUAL')" class="px-4 py-2 bg-blue-600 text-white rounded-md shadow hover:bg-blue-700 flex items-center text-sm font-medium">
-                    <i class="bi bi-cart-check mr-2"></i> Import Actuals
+                    <i class="bi bi-cart-check mr-2"></i> Actuals
                 </button>
+            </div>
+        </div>
+    </div>
+
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
+        <div class="bg-white rounded-lg shadow p-5 border-l-4 border-blue-500 hover:shadow-md transition">
+            <div class="flex justify-between items-center">
+                <div>
+                    <p class="text-xs font-bold text-gray-400 uppercase tracking-wider">Total Orders</p>
+                    <p class="text-2xl font-bold text-gray-900 mt-1">{{ kpi_total_orders|floatformat:0 }} <span class="text-sm font-normal text-gray-400">units</span></p>
+                    <p class="text-xs text-blue-500 mt-1">Actual Demand</p>
+                </div>
+                <div class="p-3 bg-blue-50 rounded-full"><i class="bi bi-cart3 text-blue-600 text-xl"></i></div>
+            </div>
+        </div>
+        <div class="bg-white rounded-lg shadow p-5 border-l-4 border-yellow-500 hover:shadow-md transition">
+            <div class="flex justify-between items-center">
+                <div>
+                    <p class="text-xs font-bold text-gray-400 uppercase tracking-wider">Allocated (Pending)</p>
+                    <p class="text-2xl font-bold text-gray-900 mt-1">{{ kpi_allocated_pending|floatformat:0 }} <span class="text-sm font-normal text-gray-400">units</span></p>
+                    <p class="text-xs text-yellow-600 mt-1">Ready to Ship</p>
+                </div>
+                <div class="p-3 bg-yellow-50 rounded-full"><i class="bi bi-box-seam text-yellow-600 text-xl"></i></div>
+            </div>
+        </div>
+        <div class="bg-white rounded-lg shadow p-5 border-l-4 border-green-500 hover:shadow-md transition">
+            <div class="flex justify-between items-center">
+                <div>
+                    <p class="text-xs font-bold text-gray-400 uppercase tracking-wider">Shipped</p>
+                    <p class="text-2xl font-bold text-gray-900 mt-1">{{ kpi_shipped|floatformat:0 }} <span class="text-sm font-normal text-gray-400">units</span></p>
+                    <p class="text-xs text-green-600 mt-1">Completed</p>
+                </div>
+                <div class="p-3 bg-green-50 rounded-full"><i class="bi bi-truck text-green-600 text-xl"></i></div>
+            </div>
+        </div>
+        <div class="bg-white rounded-lg shadow p-5 border-l-4 border-indigo-500 hover:shadow-md transition">
+            <div class="flex justify-between items-center">
+                <div>
+                    <p class="text-xs font-bold text-gray-400 uppercase tracking-wider">Fulfillment Rate</p>
+                    <p class="text-2xl font-bold text-gray-900 mt-1">{{ kpi_fulfillment_rate|floatformat:1 }}%</p>
+                    <div class="w-full bg-gray-200 rounded-full h-1.5 mt-2">
+                        <div class="bg-indigo-600 h-1.5 rounded-full" style="width: {{ kpi_fulfillment_rate }}%"></div>
+                    </div>
+                </div>
+                <div class="p-3 bg-indigo-50 rounded-full"><i class="bi bi-activity text-indigo-600 text-xl"></i></div>
             </div>
         </div>
     </div>
@@ -52,66 +126,67 @@
     <div class="bg-white shadow rounded-lg overflow-hidden border border-gray-200">
         <div class="overflow-x-auto">
             <table class="min-w-full text-left text-sm whitespace-nowrap">
-                <thead class="bg-gray-50 text-gray-600 uppercase tracking-wider border-b border-gray-200">
+                <thead class="bg-gray-50 text-gray-600 uppercase tracking-wider border-b border-gray-200 text-xs">
                     <tr>
-                        <th class="px-6 py-3 font-semibold w-12 text-center">
-                            <span class="sr-only">Expand</span>
+                        <th class="px-2 py-3 font-semibold w-8 text-center"><span class="sr-only">Expand</span></th>
+                        <th class="px-3 py-3 font-semibold cursor-pointer hover:bg-gray-100" onclick="window.doSort('{{ current_sort }}', 'date')">
+                            <div class="flex items-center space-x-1"><span>Period</span>{% if current_sort == 'date_desc' %}<i class="bi bi-sort-down-alt text-blue-600"></i>{% elif current_sort == 'date_asc' %}<i class="bi bi-sort-up text-blue-600"></i>{% else %}<i class="bi bi-arrow-down-up text-gray-300 text-xs"></i>{% endif %}</div>
                         </th>
-
-                        <th class="px-6 py-3 font-semibold cursor-pointer hover:bg-gray-100 transition-colors" onclick="window.doSort('{{ current_sort }}', 'date')">
-                            <div class="flex items-center space-x-1">
-                                <span>Period</span>
-                                {% if current_sort == 'date_desc' %} <i class="bi bi-sort-down-alt text-blue-600"></i>
-                                {% elif current_sort == 'date_asc' %} <i class="bi bi-sort-up text-blue-600"></i>
-                                {% else %} <i class="bi bi-arrow-down-up text-gray-300 text-xs"></i> {% endif %}
-                            </div>
+                        <th class="px-3 py-3 font-semibold cursor-pointer hover:bg-gray-100" onclick="window.doSort('{{ current_sort }}', 'sku')">
+                            <div class="flex items-center space-x-1"><span>SKU</span>{% if current_sort == 'sku_asc' %}<i class="bi bi-sort-alpha-down text-blue-600"></i>{% elif current_sort == 'sku_desc' %}<i class="bi bi-sort-alpha-down-alt text-blue-600"></i>{% else %}<i class="bi bi-arrow-down-up text-gray-300 text-xs"></i>{% endif %}</div>
                         </th>
-                        <th class="px-6 py-3 font-semibold cursor-pointer hover:bg-gray-100 transition-colors" onclick="window.doSort('{{ current_sort }}', 'sku')">
-                            <div class="flex items-center space-x-1">
-                                <span>SKU</span>
-                                {% if current_sort == 'sku_asc' %} <i class="bi bi-sort-alpha-down text-blue-600"></i>
-                                {% elif current_sort == 'sku_desc' %} <i class="bi bi-sort-alpha-down-alt text-blue-600"></i>
-                                {% else %} <i class="bi bi-arrow-down-up text-gray-300 text-xs"></i> {% endif %}
-                            </div>
+                        <th class="px-3 py-3 font-semibold max-w-[150px] truncate">Product Name</th>
+                        <th class="px-2 py-3 text-right font-semibold bg-blue-50 text-blue-800 cursor-pointer hover:bg-blue-100 whitespace-normal leading-tight" onclick="window.doSort('{{ current_sort }}', 'forecast')">
+                            <div class="flex items-end justify-end gap-1"><span>Total<br>Forecast</span>{% if current_sort == 'forecast_desc' %}<i class="bi bi-sort-numeric-down-alt text-blue-600"></i>{% elif current_sort == 'forecast_asc' %}<i class="bi bi-sort-numeric-down text-blue-600"></i>{% else %}<i class="bi bi-arrow-down-up text-blue-300 text-xs"></i>{% endif %}</div>
                         </th>
-                        <th class="px-6 py-3 font-semibold">Product Name</th>
-                        <th class="px-6 py-3 text-right font-semibold bg-blue-50 text-blue-800 cursor-pointer hover:bg-blue-100 transition-colors" onclick="window.doSort('{{ current_sort }}', 'forecast')">
-                            <div class="flex items-center justify-end space-x-1">
-                                <span>Total Forecast</span>
-                                {% if current_sort == 'forecast_desc' %}<i class="bi bi-sort-numeric-down-alt text-blue-600"></i>
-                                {% elif current_sort == 'forecast_asc' %}<i class="bi bi-sort-numeric-down text-blue-600"></i>
-                                {% else %}<i class="bi bi-arrow-down-up text-blue-300 text-xs"></i>{% endif %}
-                            </div>
+                        <th class="px-2 py-3 text-right font-semibold bg-purple-50 text-purple-800 cursor-pointer hover:bg-purple-100 whitespace-normal leading-tight" onclick="window.doSort('{{ current_sort }}', 'actual')">
+                            <div class="flex items-end justify-end gap-1"><span>Total<br>Actual</span>{% if current_sort == 'actual_desc' %}<i class="bi bi-sort-numeric-down-alt text-purple-600"></i>{% elif current_sort == 'actual_asc' %}<i class="bi bi-sort-numeric-down text-purple-600"></i>{% else %}<i class="bi bi-arrow-down-up text-purple-300 text-xs"></i>{% endif %}</div>
                         </th>
-                        <th class="px-6 py-3 text-right font-semibold bg-purple-50 text-purple-800 cursor-pointer hover:bg-purple-100 transition-colors" onclick="window.doSort('{{ current_sort }}', 'actual')">
-                            <div class="flex items-center justify-end space-x-1">
-                                <span>Total Actual</span>
-                                {% if current_sort == 'actual_desc' %}<i class="bi bi-sort-numeric-down-alt text-purple-600"></i>
-                                {% elif current_sort == 'actual_asc' %}<i class="bi bi-sort-numeric-down text-purple-600"></i>
-                                {% else %}<i class="bi bi-arrow-down-up text-purple-300 text-xs"></i>{% endif %}
-                            </div>
+                        <th class="px-2 py-3 text-right font-semibold bg-green-50 text-green-800 cursor-pointer hover:bg-green-100 whitespace-normal leading-tight" onclick="window.doSort('{{ current_sort }}', 'rate')">
+                            <div class="flex items-end justify-end gap-1"><span>%<br>Achieved</span>{% if current_sort == 'rate_desc' %}<i class="bi bi-sort-numeric-down-alt text-green-600"></i>{% elif current_sort == 'rate_asc' %}<i class="bi bi-sort-numeric-down text-green-600"></i>{% else %}<i class="bi bi-arrow-down-up text-green-300 text-xs"></i>{% endif %}</div>
                         </th>
-                        <th class="px-6 py-3 text-center font-semibold">Details</th>
+                        <th class="px-2 py-3 text-right font-semibold bg-indigo-50 text-indigo-800 cursor-pointer hover:bg-indigo-100 whitespace-normal leading-tight" onclick="window.doSort('{{ current_sort }}', 'allocated')">
+                            <div class="flex items-end justify-end gap-1"><span>Total<br>Allocated</span>{% if current_sort == 'allocated_desc' %}<i class="bi bi-sort-numeric-down-alt text-indigo-600"></i>{% elif current_sort == 'allocated_asc' %}<i class="bi bi-sort-numeric-down text-indigo-600"></i>{% else %}<i class="bi bi-arrow-down-up text-indigo-300 text-xs"></i>{% endif %}</div>
+                        </th>
+                        <th class="px-2 py-3 text-right font-semibold bg-red-50 text-red-800 cursor-pointer hover:bg-red-100 whitespace-normal leading-tight" onclick="window.doSort('{{ current_sort }}', 'gap')">
+                            <div class="flex items-end justify-end gap-1"><span>Gap</span>{% if current_sort == 'gap_desc' %}<i class="bi bi-sort-numeric-down-alt text-red-600"></i>{% elif current_sort == 'gap_asc' %}<i class="bi bi-sort-numeric-down text-red-600"></i>{% else %}<i class="bi bi-arrow-down-up text-red-300 text-xs"></i>{% endif %}</div>
+                        </th>
+                        <th class="px-2 py-3 text-center font-semibold">Details</th>
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-gray-100">
                     {% for group in grouped_demands %}
                     <tr class="hover:bg-gray-50 transition-colors cursor-pointer group select-none" onclick="window.toggleDetails('row-{{ forloop.counter }}')">
-                        <td class="px-6 py-4 text-center text-gray-400 group-hover:text-blue-600 transition-colors">
+                        <td class="px-2 py-4 text-center text-gray-400 group-hover:text-blue-600 transition-colors">
                             <i id="icon-row-{{ forloop.counter }}" class="bi bi-chevron-right transition-transform duration-200 inline-block"></i>
                         </td>
-                        <td class="px-6 py-4 font-medium text-gray-900">{{ group.period|date:"Y-m" }}</td>
-                        <td class="px-6 py-4 font-mono text-gray-600 font-bold">
+                        <td class="px-3 py-4 font-medium text-gray-900">{{ group.period|date:"Y-m" }}</td>
+                        <td class="px-3 py-4 font-mono text-gray-600 font-bold">
                             {% if current_query and current_query|lower in group.product.sku|lower %}
                                 <span class="bg-yellow-200">{{ group.product.sku }}</span>
                             {% else %}
                                 {{ group.product.sku }}
                             {% endif %}
                         </td>
-                        <td class="px-6 py-4 text-gray-500">{{ group.product.description|truncatechars:30 }}</td>
-                        <td class="px-6 py-4 text-right font-bold text-gray-900 bg-blue-50/30">{{ group.total_forecast|floatformat:0 }}</td>
-                        <td class="px-6 py-4 text-right font-bold text-gray-900 bg-purple-50/30">{{ group.total_actual|floatformat:0 }}</td>
-                        <td class="px-6 py-4 text-center text-xs text-gray-400">
+                        <td class="px-3 py-4 text-gray-500 max-w-[150px] truncate" title="{{ group.product.description }}">
+                            {{ group.product.description }}
+                        </td>
+                        <td class="px-2 py-4 text-right font-bold text-gray-900 bg-blue-50/30">{{ group.total_forecast|floatformat:0 }}</td>
+                        <td class="px-2 py-4 text-right font-bold text-gray-900 bg-purple-50/30">{{ group.total_actual|floatformat:0 }}</td>
+                        <td class="px-2 py-4 text-right font-bold text-gray-900 bg-green-50/30">
+                            {% if group.total_forecast > 0 %}
+                                <span class="{% if group.achievement_rate < 80 %}text-red-600{% elif group.achievement_rate > 110 %}text-blue-600{% else %}text-green-700{% endif %}">
+                                    {{ group.achievement_rate|floatformat:0 }}%
+                                </span>
+                            {% else %}
+                                <span class="text-gray-300">-</span>
+                            {% endif %}
+                        </td>
+                        <td class="px-2 py-4 text-right font-bold text-gray-900 bg-indigo-50/30">{{ group.total_allocated|floatformat:0 }}</td>
+                        <td class="px-2 py-4 text-right font-bold {% if group.total_gap > 0 %}text-red-600 bg-red-50/30{% else %}text-green-600 bg-green-50/30{% endif %}">
+                            {{ group.total_gap|floatformat:0 }}
+                        </td>
+                        <td class="px-2 py-4 text-center text-xs text-gray-400">
                             {% if group.details %}
                             <span class="bg-gray-100 text-gray-600 px-2 py-1 rounded-full">{{ group.details|length }}</span>
                             {% else %} - {% endif %}
@@ -119,22 +194,28 @@
                     </tr>
 
                     <tr id="row-{{ forloop.counter }}" class="hidden bg-gray-50/50">
-                        <td colspan="7" class="px-0 py-0 border-b border-gray-100">
-                            <div class="p-4 pl-20 pr-8 bg-gray-50 border-t border-gray-100 shadow-inner transition-all">
+                        <td colspan="10" class="px-0 py-0 border-b border-gray-100">
+                            <div class="p-4 pl-12 pr-4 bg-gray-50 border-t border-gray-100 shadow-inner transition-all">
                                 <table class="w-full text-sm text-left border border-gray-200 rounded-md bg-white overflow-hidden shadow-sm">
                                     <thead class="bg-gray-100 text-xs text-gray-500 uppercase">
                                         <tr>
-                                            <th class="px-4 py-3">Country / Customer</th>
-                                            <th class="px-4 py-3 text-right bg-blue-50/50 text-blue-800">Forecast</th>
-                                            <th class="px-4 py-3 text-right bg-purple-50/50 text-purple-800">Actual Sales</th>
-                                            <th class="px-4 py-3 text-center">Status</th>
-                                            <th class="px-4 py-3 text-right">Action</th>
+                                            <th class="px-3 py-2">Country / Customer</th>
+                                            <th class="px-3 py-2 text-right bg-blue-50/50 text-blue-800">Forecast</th>
+                                            <th class="px-3 py-2 text-right bg-purple-50/50 text-purple-800">Actual Sales</th>
+
+                                            <th class="px-3 py-2 text-right bg-green-50/50 text-green-800">% Achieved</th>
+                                            <th class="px-3 py-2 text-right bg-indigo-50/50 text-indigo-800">Allocated</th>
+
+                                            <th class="px-3 py-2 text-left">Shipment</th>
+                                            <th class="px-3 py-2 text-center">Date</th>
+
+                                            <th class="px-3 py-2 text-right">Action</th>
                                         </tr>
                                     </thead>
                                     <tbody class="divide-y divide-gray-100">
                                         {% for detail in group.details %}
                                         <tr class="hover:bg-gray-50 transition-colors">
-                                            <td class="px-4 py-3 font-medium text-gray-700 flex items-center">
+                                            <td class="px-3 py-2 font-medium text-gray-700 flex items-center">
                                                 <i class="bi bi-geo-alt text-gray-400 mr-2"></i>
                                                 {% if current_query and current_query|lower in detail.country|lower %}
                                                     <span class="bg-yellow-200">{{ detail.country }}</span>
@@ -142,24 +223,57 @@
                                                     {{ detail.country }}
                                                 {% endif %}
                                             </td>
-                                            <td class="px-4 py-3 text-right text-gray-700 font-medium bg-blue-50/20">
+                                            <td class="px-3 py-2 text-right text-gray-700 font-medium bg-blue-50/20">
                                                 {% if detail.forecast_qty > 0 %}{{ detail.forecast_qty|floatformat:0 }}{% else %}<span class="text-gray-300">-</span>{% endif %}
                                             </td>
-                                            <td class="px-4 py-3 text-right text-gray-700 font-medium bg-purple-50/20">
+                                            <td class="px-3 py-2 text-right text-gray-700 font-medium bg-purple-50/20">
                                                 {% if detail.actual_qty > 0 %}{{ detail.actual_qty|floatformat:0 }}{% else %}<span class="text-gray-300">-</span>{% endif %}
                                             </td>
-                                            <td class="px-4 py-3 text-center">
+
+                                            <td class="px-3 py-2 text-right font-medium text-gray-700 bg-green-50/20">
+                                                {% if detail.forecast_qty > 0 %}
+                                                    {% widthratio detail.actual_qty detail.forecast_qty 100 as rate %}
+                                                    <span class="{% if rate|add:0 < 80 %}text-red-600{% elif rate|add:0 > 110 %}text-blue-600{% else %}text-green-700{% endif %}">
+                                                        {{ rate }}%
+                                                    </span>
+                                                {% else %}
+                                                    <span class="text-gray-300">-</span>
+                                                {% endif %}
+                                            </td>
+
+                                            <td class="px-3 py-2 text-right font-bold text-gray-900 bg-indigo-50/20">
+                                                {% if detail.actual_obj %}
+                                                    {{ detail.actual_obj.allocated_qty|default:0|floatformat:0 }}
+                                                {% else %}
+                                                    <span class="text-gray-300">-</span>
+                                                {% endif %}
+                                            </td>
+
+                                            <td class="px-3 py-2 text-left">
+                                                {% if detail.actual_obj and detail.actual_obj.shipment %}
+                                                    <div class="flex items-center gap-1 font-mono text-xs font-bold text-gray-700">
+                                                        <i class="bi bi-box-seam text-gray-400"></i> {{ detail.actual_obj.shipment.reference }}
+                                                    </div>
+                                                {% else %}
+                                                    <span class="text-gray-300 text-xs">-</span>
+                                                {% endif %}
+                                            </td>
+
+                                            <td class="px-3 py-2 text-center text-xs">
                                                 {% if detail.actual_obj %}
                                                     {% if detail.actual_obj.shipped_date %}
-                                                        <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800 border border-green-200">Shipped</span>
-                                                    {% elif detail.actual_obj.allocated_qty > 0 %}
-                                                        <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800 border border-blue-200">Allocated</span>
+                                                        <span class="text-green-600 font-medium">{{ detail.actual_obj.shipped_date|date:"M d" }}</span>
+                                                    {% elif detail.actual_obj.shipment and detail.actual_obj.shipment.etd %}
+                                                        <span class="text-gray-600">ETD: {{ detail.actual_obj.shipment.etd|date:"M d" }}</span>
                                                     {% else %}
-                                                        <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-yellow-100 text-yellow-800 border border-yellow-200">Pending</span>
+                                                        <span class="text-gray-300">-</span>
                                                     {% endif %}
-                                                {% else %}<span class="text-gray-300 text-xs">-</span>{% endif %}
+                                                {% else %}
+                                                    <span class="text-gray-300">-</span>
+                                                {% endif %}
                                             </td>
-                                            <td class="px-4 py-3 text-right">
+
+                                            <td class="px-3 py-2 text-right">
                                                 {% if detail.actual_obj and not detail.actual_obj.shipped_date %}
                                                     <button type="button"
                                                             onclick="window.openAllocationModal(
@@ -167,18 +281,19 @@
                                                                 '{{ detail.product.sku|escapejs }}',
                                                                 '{{ detail.actual_qty }}',
                                                                 '{{ detail.actual_obj.allocated_qty|default:0 }}',
-                                                                '{{ group.available_stock|default:0|floatformat:0 }}'
+                                                                '{{ group.available_stock|default:0|floatformat:0 }}',
+                                                                '{{ detail.actual_obj.shipment.id|default:'' }}'
                                                             )"
-                                                            class="{% if detail.actual_obj.allocated_qty > 0 %}text-blue-600 border-blue-200{% else %}text-purple-600 border-purple-200{% endif %} hover:bg-gray-50 border rounded px-2 py-1 text-xs font-medium transition-colors">
+                                                            class="{% if detail.actual_obj.allocated_qty > 0 %}text-blue-600 border-blue-200{% else %}text-purple-600 border-purple-200{% endif %} hover:bg-gray-50 border rounded px-2 py-1 text-[10px] font-medium transition-colors">
                                                         {% if detail.actual_obj.allocated_qty > 0 %}
-                                                            Edit Alloc ({{ detail.actual_obj.allocated_qty|floatformat:0 }})
+                                                            Edit
                                                         {% else %}
                                                             Allocate
                                                         {% endif %}
                                                     </button>
                                                 {% elif detail.actual_obj and detail.actual_obj.shipped_date %}
-                                                    <span class="text-green-600 text-xs flex justify-end items-center">
-                                                        <i class="bi bi-truck mr-1"></i> Shipped
+                                                    <span class="text-green-600 text-[10px] flex justify-end items-center">
+                                                        <i class="bi bi-truck mr-1"></i> Done
                                                     </span>
                                                 {% endif %}
                                             </td>
@@ -191,7 +306,7 @@
                     </tr>
                     {% empty %}
                     <tr>
-                        <td colspan="7" class="px-6 py-12 text-center text-gray-500">
+                        <td colspan="10" class="px-6 py-12 text-center text-gray-500">
                             <i class="bi bi-search text-4xl mb-3 block text-gray-300"></i>
                             No matching records found.
                         </td>
@@ -204,77 +319,68 @@
 </div>
 
 {% include 'forecast/partials/import_demand_modal.html' %}
-
-<div id="allocationModal" class="relative z-50 hidden" aria-labelledby="modal-title" role="dialog" aria-modal="true">
-    <div class="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity"></div>
-    <div class="fixed inset-0 z-10 w-screen overflow-y-auto">
-        <div class="flex min-h-full items-end justify-center p-4 text-center sm:items-center sm:p-0">
-            <div class="relative transform overflow-hidden rounded-lg bg-white text-left shadow-xl transition-all sm:my-8 sm:w-full sm:max-w-sm">
-
-                <form method="POST" id="allocationForm">
-                    {% csrf_token %}
-                    <div class="bg-white px-4 pb-4 pt-5 sm:p-6 sm:pb-4">
-                        <div class="sm:flex sm:items-start">
-                            <div class="mx-auto flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-full bg-blue-100 sm:mx-0 sm:h-10 sm:w-10">
-                                <i class="bi bi-layers text-blue-600 text-lg"></i>
-                            </div>
-                            <div class="mt-3 text-center sm:ml-4 sm:mt-0 sm:text-left w-full">
-                                <h3 class="text-base font-semibold leading-6 text-gray-900" id="alloc-modal-title">Allocate Stock</h3>
-                                <div class="mt-2">
-                                    <p class="text-sm text-gray-500 mb-3">
-                                        Defining reserved stock for <span id="allocSku" class="font-bold"></span>.
-                                    </p>
-
-                                    <div class="mb-4 bg-blue-50 border border-blue-100 rounded-md p-3">
-                                        <div class="flex justify-between items-center">
-                                            <span class="text-xs text-blue-700 font-medium">Projected Available:</span>
-                                            <span id="allocAvailable" class="text-sm font-bold text-blue-800">0</span>
-                                        </div>
-                                        <p class="text-[10px] text-blue-500 mt-1">
-                                            (On Hand - Reserved)
-                                        </p>
-                                    </div>
-
-                                    <div class="space-y-3">
-                                        <div>
-                                            <label class="block text-xs font-medium text-gray-700">Customer Demand</label>
-                                            <input type="text" id="allocDemandQty" disabled class="mt-1 block w-full rounded-md border-gray-300 bg-gray-50 text-gray-500 sm:text-sm border p-2">
-                                        </div>
-                                        <div>
-                                            <label class="block text-xs font-medium text-gray-700">Allocate Quantity</label>
-                                            <input type="number" step="1" name="allocate_qty" id="allocInputQty" required
-                                                   class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm border p-2">
-                                            <p class="text-xs text-gray-400 mt-1">Enter 0 to release allocation.</p>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="bg-gray-50 px-4 py-3 sm:flex sm:flex-row-reverse sm:px-6">
-                        <button type="submit" class="inline-flex w-full justify-center rounded-md bg-blue-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-500 sm:ml-3 sm:w-auto">Confirm</button>
-                        <button type="button" onclick="window.closeAllocModal()" class="mt-3 inline-flex w-full justify-center rounded-md bg-white px-3 py-2 text-sm font-semibold text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50 sm:mt-0 sm:w-auto">Cancel</button>
-                    </div>
-                </form>
-
-            </div>
-        </div>
-    </div>
-</div>
+{% include 'forecast/partials/allocation_modal.html' %}
 
 <script>
-    // 1. Rename Import Modal Opener
+    // === 1. Initialize State & Persistence ===
+    (function initFilterState() {
+        const storedMonth = sessionStorage.getItem('forecast_active_month');
+        const serverMonth = '{{ current_month_filter }}';
+
+        if (!serverMonth && storedMonth) {
+            document.getElementById('monthFilter').value = storedMonth;
+            window.currentMonthState = storedMonth;
+            setTimeout(() => {
+                window.doMonthFilter(storedMonth, false);
+            }, 50);
+        } else {
+            if (serverMonth) {
+                sessionStorage.setItem('forecast_active_month', serverMonth);
+            }
+            window.currentMonthState = serverMonth;
+        }
+
+        window.currentSortState = '{{ current_sort }}';
+    })();
+
+    // ... (Bind AJAX Submission) ...
+    (function setupAllocationForm() {
+        const form = document.getElementById('allocationForm');
+        if (form) {
+            form.onsubmit = function(e) {
+                e.preventDefault();
+                const submitBtn = form.querySelector('button[type="submit"]');
+                const originalText = submitBtn.innerText;
+                submitBtn.disabled = true;
+                submitBtn.innerText = "Saving...";
+                const formData = new FormData(form);
+
+                fetch(form.action, {
+                    method: 'POST',
+                    body: formData,
+                    headers: { 'X-Requested-With': 'XMLHttpRequest' }
+                })
+                .then(response => {
+                    if (response.ok) {
+                        window.closeAllocModal();
+                        const query = document.getElementById('searchInput') ? document.getElementById('searchInput').value : '';
+                        reloadContent(query, window.currentSortState, window.currentMonthState);
+                    } else { alert("Error saving allocation."); }
+                })
+                .catch(err => { console.error(err); alert("Network error."); })
+                .finally(() => { submitBtn.disabled = false; submitBtn.innerText = originalText; });
+            };
+        }
+    })();
+
     window.openForecastImportModal = function(type) {
         if (typeof openDemandModal === 'function') {
             openDemandModal();
             const select = document.querySelector('select[name="demand_type"]');
             if (select) { select.value = type; }
-        } else {
-            console.error("openDemandModal function is missing. Check import_demand_modal.html include.");
         }
     }
 
-    // 2. Details Toggler
     window.toggleDetails = function(rowId) {
         const detailRow = document.getElementById(rowId);
         const icon = document.getElementById('icon-' + rowId);
@@ -289,77 +395,91 @@
         }
     }
 
-    // 3. Allocation Modal Logic [Updated]
-    window.openAllocationModal = function(pk, sku, demandQty, currentAlloc, availableStock) {
+    // [MODIFIED] Added shipmentId param to auto-select dropdown
+    window.openAllocationModal = function(pk, sku, demandQty, currentAlloc, availableStock, shipmentId) {
         const modal = document.getElementById('allocationModal');
         const form = document.getElementById('allocationForm');
-
-        if (!modal || !form) {
-            console.error("Allocation Modal or Form not found.");
-            return;
-        }
-
+        if (!modal || !form) return;
         form.action = `/forecast/allocate/${pk}/`;
+        document.getElementById('allocSku').innerText = sku;
+        document.getElementById('allocAvailable').innerText = availableStock;
+        document.getElementById('allocDemandQty').value = demandQty;
 
-        // Update SKU Label
-        const skuLabel = document.getElementById('allocSku');
-        if (skuLabel) skuLabel.innerText = sku;
-
-        // Update Available Stock Display
-        const availLabel = document.getElementById('allocAvailable');
-        if (availLabel) availLabel.innerText = availableStock;
-
-        // Update Demand Input
-        const demandInput = document.getElementById('allocDemandQty');
-        if (demandInput) demandInput.value = demandQty;
-
-        // Update Allocate Input
-        const inputQty = document.getElementById('allocInputQty');
-        if (inputQty) {
-            const current = parseFloat(currentAlloc);
-            if (current > 0) {
-                inputQty.value = current;
-            } else {
-                inputQty.value = demandQty; // Default to full demand
-            }
+        // Auto-select Shipment if exists
+        const shipSelect = document.getElementById('allocShipmentId');
+        if(shipSelect) {
+            shipSelect.value = shipmentId || ""; // Reset if null
         }
 
+        const inputQty = document.getElementById('allocInputQty');
+        const current = parseFloat(currentAlloc);
+        if (current > 0) inputQty.value = current;
+        else inputQty.value = demandQty;
         modal.classList.remove('hidden');
         if (inputQty) inputQty.focus();
     }
-
     window.closeAllocModal = function() {
         const modal = document.getElementById('allocationModal');
         if (modal) modal.classList.add('hidden');
     }
 
-    // 4. Search & Sort
     window.doSearch = function(query) {
-        const sort = '{{ current_sort }}';
-        reloadContent(query, sort);
+        reloadContent(query, window.currentSortState, window.currentMonthState);
+    }
+
+    window.doMonthFilter = function(month) {
+        sessionStorage.setItem('forecast_active_month', month);
+        window.currentMonthState = month;
+        const query = document.getElementById('searchInput').value;
+        reloadContent(query, window.currentSortState, month);
+    }
+
+    // === NEW: Quick Month Navigation ===
+    window.changeMonth = function(offset) {
+        const input = document.getElementById('monthFilter');
+        let currentVal = input.value;
+
+        // Default to today if empty
+        if (!currentVal) {
+            const now = new Date();
+            currentVal = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+        }
+
+        const [year, month] = currentVal.split('-').map(Number);
+
+        // Create date object (Month is 0-indexed in JS)
+        // Set date to 1 to avoid rollover issues
+        const dateObj = new Date(year, month - 1 + offset, 1);
+
+        const newYear = dateObj.getFullYear();
+        const newMonth = String(dateObj.getMonth() + 1).padStart(2, '0');
+        const newVal = `${newYear}-${newMonth}`;
+
+        input.value = newVal;
+        window.doMonthFilter(newVal);
     }
 
     window.doSort = function(currentSort, field) {
-        let newSort = 'date_desc';
+        let newSort = 'date_asc';
+        if (field === 'date') newSort = (currentSort === 'date_asc') ? 'date_desc' : 'date_asc';
+        else if (field === 'sku') newSort = (currentSort === 'sku_asc') ? 'sku_desc' : 'sku_asc';
+        else if (field === 'forecast') newSort = (currentSort === 'forecast_desc') ? 'forecast_asc' : 'forecast_desc';
+        else if (field === 'actual') newSort = (currentSort === 'actual_desc') ? 'actual_asc' : 'actual_desc';
+        else if (field === 'allocated') newSort = (currentSort === 'allocated_desc') ? 'allocated_asc' : 'allocated_desc';
+        else if (field === 'gap') newSort = (currentSort === 'gap_desc') ? 'gap_asc' : 'gap_desc';
+        else if (field === 'rate') newSort = (currentSort === 'rate_desc') ? 'rate_asc' : 'rate_desc';
 
-        if (field === 'date') {
-            newSort = (currentSort === 'date_desc') ? 'date_asc' : 'date_desc';
-        } else if (field === 'sku') {
-            newSort = (currentSort === 'sku_asc') ? 'sku_desc' : 'sku_asc';
-        } else if (field === 'forecast') {
-            newSort = (currentSort === 'forecast_desc') ? 'forecast_asc' : 'forecast_desc';
-        } else if (field === 'actual') {
-            newSort = (currentSort === 'actual_desc') ? 'actual_asc' : 'actual_desc';
-        }
-
-        const searchInput = document.getElementById('searchInput');
-        const query = searchInput ? searchInput.value : '';
-        reloadContent(query, newSort);
+        const query = document.getElementById('searchInput').value;
+        reloadContent(query, newSort, window.currentMonthState);
     }
 
-    // 5. Safe Reload Logic (Fixes Duplicate IDs)
-    function reloadContent(query, sort) {
-        const url = `{% url 'forecast:sales_forecast' %}?q=${encodeURIComponent(query)}&sort=${sort}`;
+    function reloadContent(query, sort, month) {
+        window.currentSortState = sort;
+        window.currentMonthState = month;
+        let url = `{% url 'forecast:sales_forecast' %}?q=${encodeURIComponent(query)}&sort=${sort}`;
+        if (month) {
+            url += `&month=${month}`;
+        }
 
         fetch(url, {
             headers: { 'X-Requested-With': 'XMLHttpRequest' }
@@ -368,13 +488,11 @@
         .then(html => {
             const parser = new DOMParser();
             const doc = parser.parseFromString(html, 'text/html');
-
             const newWrapper = doc.getElementById('forecast-content-wrapper');
             const currentWrapper = document.getElementById('forecast-content-wrapper');
 
             if (newWrapper && currentWrapper) {
                 currentWrapper.innerHTML = newWrapper.innerHTML;
-
                 const newInput = document.getElementById('searchInput');
                 if (newInput) {
                     newInput.focus();
