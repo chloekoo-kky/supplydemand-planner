@@ -678,6 +678,9 @@ def product_update(request, pk):
             product.unit_volume = data.get('unit_volume', product.unit_volume)
             product.safety_stock_days = data.get('safety_stock_days', product.safety_stock_days)
             product.lead_time_days = data.get('lead_time_days', product.lead_time_days)
+            product.estimated_daily_usage = data.get('estimated_daily_usage', product.estimated_daily_usage)
+            product.moq = data.get('moq', product.moq)
+
             product.save()
             return JsonResponse({'status': 'ok'})
         except Exception as e:
@@ -810,3 +813,140 @@ def product_search_components(request):
         'unit_volume': float(p.unit_volume)
     } for p in products]
     return JsonResponse({'results': results})
+
+
+def load_bom_import_modal(request):
+    """Step 1: Render the file upload form for BOMs."""
+    return render(request, 'inventory/partials/import_bom_modal_step1.html')
+
+def process_bom_import_file(request):
+    """Step 2: Read file, match Products, and show preview."""
+    if request.method == "POST" and request.FILES.get('file_upload'):
+        try:
+            file_obj = request.FILES['file_upload']
+            df = extract_data_from_file(file_obj) # Reusing your existing service
+
+            if df is None or df.empty:
+                return JsonResponse({'success': False, 'message': 'File is empty.'})
+
+            # Normalize headers specifically for BOM
+            # We look for: Parent (FG), Component (Raw), Quantity
+            df.columns = [str(c).strip().lower().replace(' ', '_') for c in df.columns]
+
+            # Map columns
+            col_parent = next((c for c in df.columns if c in ['parent_sku', 'fg_sku', 'finished_good', 'parent']), None)
+            col_comp = next((c for c in df.columns if c in ['component_sku', 'child_sku', 'raw_material', 'component']), None)
+            col_qty = next((c for c in df.columns if c in ['quantity', 'qty', 'amount', 'usage']), None)
+
+            if not (col_parent and col_comp and col_qty):
+                 return JsonResponse({'success': False, 'message': 'Missing columns. Required: "Parent SKU", "Component SKU", "Quantity"'})
+
+            # Prepare Lookups
+            all_products = Product.objects.all()
+            sku_map = {p.sku.upper(): p for p in all_products}
+
+            preview_data = []
+
+            for _, row in df.iterrows():
+                p_val = str(row[col_parent]).strip()
+                c_val = str(row[col_comp]).strip()
+                q_val = row[col_qty]
+
+                try:
+                    qty = float(q_val)
+                except:
+                    qty = 0
+
+                # Match Parent (Must be FG)
+                parent_obj = sku_map.get(p_val.upper())
+                parent_status = 'OK'
+                if not parent_obj:
+                    parent_status = 'NOT_FOUND'
+                elif parent_obj.nature != 'FG':
+                    parent_status = 'NOT_FG' # Warning: Parent should ideally be FG
+
+                # Match Component
+                comp_obj = sku_map.get(c_val.upper())
+                comp_status = 'OK'
+                if not comp_obj:
+                    comp_status = 'NOT_FOUND'
+                elif comp_obj.id == (parent_obj.id if parent_obj else -1):
+                    comp_status = 'SELF_REF' # Cannot start loop
+
+                preview_data.append({
+                    'parent_input': p_val,
+                    'parent_found': parent_obj.sku if parent_obj else None,
+                    'parent_id': parent_obj.id if parent_obj else None,
+                    'parent_status': parent_status,
+
+                    'comp_input': c_val,
+                    'comp_found': comp_obj.sku if comp_obj else None,
+                    'comp_id': comp_obj.id if comp_obj else None,
+                    'comp_status': comp_status,
+
+                    'qty': qty
+                })
+
+            # Sort: Errors first
+            preview_data.sort(key=lambda x: 0 if (x['parent_status'] == 'OK' and x['comp_status'] == 'OK') else 1, reverse=True)
+
+            request.session['temp_bom_import'] = preview_data
+
+            html = render_to_string('inventory/partials/import_bom_modal_step2.html', {
+                'items': preview_data
+            }, request=request)
+
+            return JsonResponse({'success': True, 'html': html})
+
+        except Exception as e:
+            return JsonResponse({'success': False, 'message': str(e)})
+
+    return JsonResponse({'success': False, 'message': 'Invalid request'})
+
+@csrf_exempt
+def finalize_bom_import(request):
+    """Step 3: Save valid BOM connections."""
+    if request.method == 'POST':
+        data = request.session.get('temp_bom_import')
+        if not data:
+            return JsonResponse({'success': False, 'message': 'Session expired'})
+
+        created_count = 0
+        updated_count = 0
+        errors = 0
+
+        try:
+            with transaction.atomic():
+                for item in data:
+                    # Skip invalid rows
+                    if not (item['parent_id'] and item['comp_id']):
+                        continue
+
+                    # Logic: Create or Update BOM
+                    # User selection check could be added here if we had checkboxes in UI
+
+                    parent = Product.objects.get(id=item['parent_id'])
+                    component = Product.objects.get(id=item['comp_id'])
+                    qty = Decimal(str(item['qty']))
+
+                    obj, created = BillOfMaterial.objects.update_or_create(
+                        product=parent,
+                        component=component,
+                        defaults={'quantity': qty}
+                    )
+
+                    if created:
+                        created_count += 1
+                    else:
+                        updated_count += 1
+
+            del request.session['temp_bom_import']
+            return JsonResponse({
+                'success': True,
+                'message': f"Success! Created {created_count} new recipes, Updated {updated_count} existing."
+            })
+
+        except Exception as e:
+            return JsonResponse({'success': False, 'message': str(e)})
+
+    return JsonResponse({'success': False, 'message': 'Post required'})

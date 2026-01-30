@@ -217,15 +217,33 @@
 
             // 通用高亮切换函数
             function setActiveLink(clickedLink) {
-                // 1. 重置所有链接样式 (变为灰暗色)
+                // 1. 重置所有 ajax-link 样式
                 sidebarLinks.forEach(link => {
-                    link.classList.remove('bg-blue-600', 'text-white');
+                    link.classList.remove('bg-blue-600', 'text-white', 'shadow-lg');
                     link.classList.add('text-slate-400', 'hover:bg-slate-800', 'hover:text-white');
+
+                    // 特殊处理：如果是 Portfolio 里的文字，重置为默认暗色
+                    const subTexts = link.querySelectorAll('p');
+                    if (subTexts.length > 0) {
+                        subTexts[0].classList.add('text-slate-300');
+                        subTexts[0].classList.remove('text-white');
+                        subTexts[1].classList.add('text-slate-500');
+                        subTexts[1].classList.remove('text-blue-100');
+                    }
                 });
 
-                // 2. 高亮当前链接 (变为蓝色)
+                // 2. 高亮当前点击的链接
                 clickedLink.classList.remove('text-slate-400', 'hover:bg-slate-800', 'hover:text-white');
-                clickedLink.classList.add('bg-blue-600', 'text-white');
+                clickedLink.classList.add('bg-blue-600', 'text-white', 'shadow-lg');
+
+                // 特殊处理：如果点击的是 Portfolio，内部文字变亮
+                const activeSubTexts = clickedLink.querySelectorAll('p');
+                if (activeSubTexts.length > 0) {
+                    activeSubTexts[0].classList.remove('text-slate-300');
+                    activeSubTexts[0].classList.add('text-white');
+                    activeSubTexts[1].classList.remove('text-slate-500');
+                    activeSubTexts[1].classList.add('text-blue-100');
+                }
             }
 
             // 执行 HTML 字符串中的 <script> 标签

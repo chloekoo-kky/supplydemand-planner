@@ -134,7 +134,7 @@ class ForecastEntry(models.Model):
     )
 
     # 逻辑备注 (解释为什么需要生产这么多，例如：Demand 500 - Stock 100 = 400)
-    calculation_note = models.CharField(max_length=255, blank=True)
+    calculation_note = models.TextField(blank=True, help_text="存储详细的 MRP 计算逻辑 (JSON)")
 
     class Meta:
         ordering = ['suggested_start_date']

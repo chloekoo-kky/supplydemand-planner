@@ -13,7 +13,7 @@ from .forms import ImportDemandForm, RunMRPForm
 from .services import (
     process_demand_file, run_mrp_engine,
     create_po_from_plan, allocate_stock_for_demand,
-    ship_allocated_demand
+    ship_allocated_demand, convert_entries_to_orders
 )
 
 def forecast_dashboard(request):
@@ -28,8 +28,11 @@ def forecast_dashboard(request):
                 success, msg = run_mrp_engine(form.cleaned_data['target_month'])
                 if success: messages.success(request, msg)
                 else: messages.warning(request, msg)
+            else:
+                # [新增] 如果校验失败，告诉用户原因
+                messages.error(request, f"MRP 启动失败: {form.errors}")
             return redirect('forecast:dashboard')
-
+        
         elif 'ship_item' in request.POST:
             demand_id = request.POST.get('demand_id')
             ship_date_str = request.POST.get('shipment_date')
@@ -367,12 +370,27 @@ def allocate_demand(request, pk):
 def plan_detail(request, pk):
     plan = get_object_or_404(ForecastPlan, pk=pk)
 
-    if request.method == 'POST' and 'convert_po' in request.POST:
-        msg = create_po_from_plan(pk)
-        messages.success(request, msg)
+    if request.method == 'POST':
+        # 获取用户勾选的 entry IDs
+        selected_ids = request.POST.getlist('selected_entries')
+
+        if selected_ids:
+            count = convert_entries_to_orders(selected_ids)
+            if count > 0:
+                messages.success(request, f"成功创建 {count} 张生产工单 (Draft)。")
+                # 检查是否全部转换完成，如果是，锁定计划
+                if not plan.entries.filter(production_order__isnull=True).exists():
+                    plan.is_locked = True
+                    plan.save()
+            else:
+                messages.warning(request, "未生成任何工单（可能已转换过）。")
+        else:
+            messages.warning(request, "请先勾选需要转换的生产建议。")
+
         return redirect('forecast:plan_detail', pk=pk)
 
     return render(request, 'forecast/plan_detail.html', {'plan': plan})
+
 
 def delete_plan(request, pk):
     plan = get_object_or_404(ForecastPlan, pk=pk)

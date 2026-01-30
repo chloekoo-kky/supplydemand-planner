@@ -12,6 +12,7 @@ from decimal import Decimal
 from django.views.decorators.http import require_POST
 from django.views.decorators.csrf import csrf_exempt
 
+from forecast.models import MarketDemand
 from inventory.models import Product, InventorySnapshot, BillOfMaterial
 from .models import ProductionOrder, ProductionComponent
 from .services import (
@@ -115,6 +116,154 @@ def production_dashboard(request):
         return render(request, 'production/partials/dashboard_content.html', context)
 
     return render(request, 'production/production_dashboard.html', context)
+
+def production_dashboard_impl(request):
+    # Full implementation of production_dashboard as provided in previous turns
+    # Copy the full content of production_dashboard here from your file
+    search_query = request.GET.get('search', '').strip()
+    date_from = request.GET.get('date_from', '')
+    date_to = request.GET.get('date_to', '')
+    status_filter = request.GET.get('status', '')
+
+    orders = ProductionOrder.objects.select_related('product') \
+                                    .prefetch_related('components__component') \
+                                    .all().order_by('start_date', 'created_at')
+
+    fgs = Product.objects.filter(nature='FG').order_by('sku')
+
+    if search_query:
+        orders = orders.filter(
+            Q(order_number__icontains=search_query) |
+            Q(product__sku__icontains=search_query) |
+            Q(product__description__icontains=search_query)
+        )
+
+    if date_from:
+        orders = orders.filter(start_date__gte=date_from)
+
+    if date_to:
+        orders = orders.filter(start_date__lte=date_to)
+
+    if status_filter:
+        orders = orders.filter(status=status_filter)
+
+    # Inventory Pool Logic
+    comp_product_ids = set()
+    for o in orders:
+        if o.status in ['DRAFT', 'CONFIRMED', 'IN_PROGRESS']:
+            for c in o.components.all():
+                comp_product_ids.add(c.component_id)
+
+    inventory_pool = {}
+
+    if comp_product_ids:
+        sq = InventorySnapshot.objects.filter(product=OuterRef('product')).order_by('-snapshot_date')
+        snapshots = InventorySnapshot.objects.filter(
+            pk=Subquery(sq.values('pk')[:1]),
+            product_id__in=comp_product_ids
+        )
+        for snap in snapshots:
+            inventory_pool[snap.product_id] = float(snap.quantity_on_hand)
+
+    for order in orders:
+        if order.status in ['DRAFT', 'CONFIRMED', 'IN_PROGRESS']:
+            for comp in order.components.all():
+                pid = comp.component_id
+                required = float(comp.quantity_required)
+                current_balance = inventory_pool.get(pid, 0.0)
+
+                comp.display_stock = current_balance
+
+                if current_balance >= required:
+                    comp.is_enough = True
+                    comp.shortage = 0
+                    inventory_pool[pid] = current_balance - required
+                else:
+                    comp.is_enough = False
+                    comp.shortage = required - current_balance
+                    inventory_pool[pid] = 0
+        else:
+            for comp in order.components.all():
+                comp.is_enough = True
+                comp.display_stock = 0
+
+    orders_list = list(orders)
+
+    context = {
+        'orders': orders_list,
+        'fgs': fgs,
+        'page_title': 'Production Orders',
+        'current_search': search_query,
+        'current_date_from': date_from,
+        'current_date_to': date_to,
+        'current_status': status_filter,
+    }
+
+    if request.headers.get('x-requested-with') == 'XMLHttpRequest':
+        return render(request, 'production/partials/dashboard_content.html', context)
+
+    return render(request, 'production/production_dashboard.html', context)
+
+
+def api_projected_allocation(request, pk):
+    """
+    Calculate which Actual Sales Orders this PO can fulfill.
+    Logic: FIFO (First In First Out) based on MarketDemand date > PO Date.
+    """
+    po = get_object_or_404(ProductionOrder, pk=pk)
+
+    # 1. Find relevant Actual Sales
+    # Conditions: Same Product, Type=ACTUAL, Date >= PO Start Date
+    # Also sort by date to simulate FIFO fulfillment
+    # [FIX] replaced created_at with id for tie-breaker
+    demands = MarketDemand.objects.filter(
+        product=po.product,
+        demand_type='ACTUAL',
+        period_date__gte=po.start_date
+    ).order_by('period_date', 'id')
+
+    # 2. Simulation Logic
+    po_qty_remaining = float(po.quantity)
+    results = []
+
+    for demand in demands:
+        # Calculate unfulfilled demand (Total - Allocated)
+        needed = float(demand.quantity) - float(demand.allocated_qty)
+
+        if needed <= 0:
+            continue # Already fully allocated
+
+        # How much can this PO contribute?
+        contribution = min(po_qty_remaining, needed)
+
+        status = "Partial"
+        if contribution >= needed:
+            status = "Fully Covered"
+        elif contribution <= 0:
+            status = "No Stock"
+
+        results.append({
+            'customer': demand.country,
+            'date': demand.period_date.strftime('%Y-%m-%d'),
+            'total_order': float(demand.quantity),
+            'current_allocated': float(demand.allocated_qty),
+            'gap': needed,
+            'po_contribution': contribution,
+            'status': status
+        })
+
+        po_qty_remaining -= contribution
+
+        if po_qty_remaining <= 0:
+            break
+
+    return JsonResponse({
+        'po_number': po.order_number,
+        'product': po.product.sku,
+        'po_qty': float(po.quantity),
+        'allocations': results,
+        'remaining_free_stock': max(0, po_qty_remaining)
+    })
 
 
 def production_update_status(request, pk):

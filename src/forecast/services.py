@@ -1,8 +1,10 @@
 import pandas as pd
+import json
 from datetime import timedelta, date, datetime
+from dateutil.relativedelta import relativedelta
 
 from django.db import transaction
-from django.db.models import Sum
+from django.db.models import Sum, F, Q
 from decimal import Decimal, InvalidOperation
 
 from inventory.models import Product, ProductAlias
@@ -76,79 +78,241 @@ def process_demand_file(file_obj, country, demand_type='FORECAST'):
 
     return True, f"成功导入 {imported_count} 条需求数据 ({country} - {demand_type})。"
 
+
 def run_mrp_engine(target_month_date):
     """
-    MRP 引擎：计算净需求
-    Net Requirement = (Total Demand + Safety Stock) - (Stock On Hand + Incoming POs)
+    Advanced MRP Engine: Time-Phased (3-Month Lookahead).
+    Logic:
+    1. Demand = Actual Sales Orders (Unshipped).
+    2. Shortage calculation ignores safety stock and focuses on absolute deficit.
+    3. If End Balance is -360, Suggested Qty becomes 360 (or MOQ).
     """
-    # 1. 汇总该月所有国家的 FORECAST
-    demands = MarketDemand.objects.filter(
-        period_date__year=target_month_date.year,
-        period_date__month=target_month_date.month,
-        demand_type='FORECAST'
-    ).values('product').annotate(total_qty=Sum('quantity'))
+    # Normalize target_month to 1st of month
+    target_month_date = target_month_date.replace(day=1)
 
-    if not demands:
-        return False, "该月没有预测数据 (Forecast)，请先导入 Demand。"
+    months_horizon = [
+        target_month_date,
+        target_month_date + relativedelta(months=1),
+        target_month_date + relativedelta(months=2)
+    ]
 
-    plan_name = f"MRP Plan - {target_month_date.strftime('%Y-%m')} (Auto)"
+    products = Product.objects.filter(nature='FG')
 
-    # 防止重复创建同名 Plan，先删除旧的 draft 或者报错？这里选择加时间戳后缀
+    plan_name = f"MRP Plan (Actuals) - {target_month_date.strftime('%Y-%m')}"
     if ForecastPlan.objects.filter(name=plan_name).exists():
         plan_name = f"{plan_name} v{datetime.now().strftime('%H%M%S')}"
 
     entries = []
-    products_bulk = Product.objects.in_bulk([d['product'] for d in demands])
 
     with transaction.atomic():
         plan = ForecastPlan.objects.create(name=plan_name, target_month=target_month_date)
 
-        for item in demands:
-            product = products_bulk.get(item['product'])
-            if not product: continue
-
-            forecast_qty = float(item['total_qty'])
-
-            # --- 库存数据获取 ---
-            # 假设 Product 模型里没有实时库存字段，我们需要去 InventorySnapshot 或实时计算
-            # 简化版：这里假设 Product 上有一个 current_stock (需要在 View 层 annotate)
-            # 或者在这里直接查 InventorySnapshot (虽然可能有延迟)
+        for product in products:
+            # 1. Initial Stock: Net Available = Physical SOH - Hard Allocation
             last_snapshot = product.snapshots.order_by('-snapshot_date').first()
-            soh = float(last_snapshot.quantity_on_hand) if last_snapshot else 0
+            current_soh = float(last_snapshot.quantity_on_hand) if last_snapshot else 0.0
+            current_reserved = float(last_snapshot.quantity_reserved) if last_snapshot else 0.0
 
-            # --- 安全库存计算 ---
-            # Safety Stock = (月销量 / 30) * 安全天数
-            daily_usage = forecast_qty / 30
-            safety_stock = daily_usage * product.safety_stock_days
+            running_balance = current_soh - current_reserved
 
-            # --- 净需求公式 ---
-            projected_balance = soh - forecast_qty
+            breakdown_data = {
+                "initial_stock": running_balance,
+                "months": []
+            }
 
-            if projected_balance < safety_stock:
-                # 缺口 = 安全库存 - 预计结余
-                shortage = safety_stock - projected_balance
+            target_month_shortage = 0.0
 
-                # 考虑 MOQ (最小起订量)
-                suggested_qty = max(shortage, float(product.moq))
+            # 2. Rolling Calculation for 3 Months
+            for i, month_date in enumerate(months_horizon):
+                next_month_start = month_date + relativedelta(months=1)
 
-                # 计算时间 (倒推 Lead Time)
-                # 假设需要在月头这就准备好
-                start_date = target_month_date - timedelta(days=product.lead_time_days)
+                # --- Query Construction ---
+                base_demand_query = Q(product=product, demand_type='ACTUAL', shipped_date__isnull=True)
+                base_supply_query = Q(product=product, status__in=['CONFIRMED', 'IN_PROGRESS'])
 
-                note = f"Forecast: {forecast_qty:.0f}, SOH: {soh:.0f}, SS: {safety_stock:.0f}"
+                if i == 0:
+                    # First Month: Cumulative Backlog (Past Due + Current Month)
+                    time_filter_demand = Q(period_date__lt=next_month_start)
+                    time_filter_supply = Q(due_date__lt=next_month_start)
+                else:
+                    # Future Months: Discrete Buckets
+                    time_filter_demand = Q(period_date__year=month_date.year, period_date__month=month_date.month)
+                    time_filter_supply = Q(due_date__year=month_date.year, due_date__month=month_date.month)
+
+                # A. Fetch Demand
+                demands_agg = MarketDemand.objects.filter(
+                    base_demand_query & time_filter_demand
+                ).aggregate(
+                    total_qty=Sum('quantity'),
+                    total_alloc=Sum('allocated_qty')
+                )
+
+                total_demand = float(demands_agg['total_qty'] or 0.0)
+                total_allocated = float(demands_agg['total_alloc'] or 0.0)
+                gross_requirement = max(0, total_demand - total_allocated)
+
+                # B. Fetch Supply (Inbound)
+                inbound_agg = ProductionOrder.objects.filter(
+                    base_supply_query & time_filter_supply
+                ).aggregate(total=Sum('quantity'))
+
+                projected_inbound = float(inbound_agg['total'] or 0.0)
+
+                # C. Balance Calculation (Ignoring Safety Stock)
+                end_balance = running_balance + projected_inbound - gross_requirement
+
+                # Safety stock is recorded as 0 to align with current requirement
+                safety_stock = 0.0
+
+                month_data = {
+                    "month": month_date.strftime('%Y-%m'),
+                    "demand": round(total_demand, 0),
+                    "allocated": round(total_allocated, 0),
+                    "gross_req": round(gross_requirement, 0),
+                    "inbound": round(projected_inbound, 0),
+                    "balance": round(end_balance, 0),
+                    "safety_stock": 0.0
+                }
+                breakdown_data["months"].append(month_data)
+
+                # D. Identify Shortage for Target Month (i=0)
+                if i == 0 and end_balance < 0:
+                    # Absolute deficit (e.g., -360 becomes 360)
+                    target_month_shortage = abs(end_balance)
+
+                # Carry forward the balance to the next month
+                running_balance = end_balance
+
+            # 3. Create Suggestion Entry
+            if target_month_shortage > 0:
+                moq = float(product.moq or 0.0)
+                # Suggestion is the larger of the deficit or the MOQ
+                suggested_qty = max(target_month_shortage, moq)
+
+                # Calculate start date based on lead time
+                lead_time = getattr(product, 'lead_time_days', 0)
+                start_date = target_month_date - timedelta(days=lead_time)
 
                 entries.append(ForecastEntry(
                     plan=plan,
                     product=product,
-                    suggested_qty=suggested_qty,
+                    suggested_qty=round(suggested_qty, 0),
                     eta_date=target_month_date,
                     suggested_start_date=start_date,
-                    calculation_note=note
+                    calculation_note=json.dumps(breakdown_data)
                 ))
 
-        ForecastEntry.objects.bulk_create(entries)
+        if entries:
+            ForecastEntry.objects.bulk_create(entries)
+        else:
+            plan.name += " (Demand Covered)"
+            plan.save()
 
-    return True, f"MRP 运行完成，生成 {len(entries)} 条生产建议。"
+    return True, f"MRP Complete. Generated {len(entries)} suggestions."
+
+
+def convert_entries_to_orders(entry_ids):
+    converted_count = 0
+    with transaction.atomic():
+        entries = ForecastEntry.objects.filter(id__in=entry_ids, production_order__isnull=True)
+        for entry in entries:
+            order_no = f"PO-{date.today():%y%m%d}-{entry.id}"
+            po = ProductionOrder.objects.create(
+                order_number=order_no,
+                product=entry.product,
+                quantity=entry.suggested_qty,
+                start_date=entry.suggested_start_date,
+                due_date=entry.eta_date,
+                status='DRAFT',
+                notes=f"Converted from Plan: {entry.plan.name}"
+            )
+            entry.production_order = po
+            entry.save()
+            converted_count += 1
+    return converted_count
+
+def allocate_stock_for_demand(demand_id, request_qty, shipment_id=None):
+    with transaction.atomic():
+        try:
+            demand = MarketDemand.objects.select_related('product').select_for_update().get(pk=demand_id)
+        except MarketDemand.DoesNotExist:
+            return False, "Demand record not found."
+
+        if demand.demand_type != 'ACTUAL':
+            return False, "Only 'Actual Sales' can be allocated."
+
+        if demand.shipped_date:
+            return False, "Cannot edit allocation: Item already shipped."
+
+        try:
+            new_alloc_qty = Decimal(str(request_qty))
+            if new_alloc_qty < 0: raise ValueError
+        except:
+            return False, "Invalid allocation quantity."
+
+        if new_alloc_qty > demand.quantity:
+            return False, f"Cannot allocate {new_alloc_qty} (Max Demand: {demand.quantity})."
+
+        if shipment_id:
+            try:
+                shipment = OutboundShipment.objects.get(pk=shipment_id)
+                if shipment.destination:
+                    ship_dest = shipment.destination.strip().lower()
+                    demand_dest = demand.country.strip().lower()
+                    if ship_dest != demand_dest:
+                        return False, f"Error: Container '{shipment.reference}' is restricted to {shipment.destination}. This item is for {demand.country}."
+                demand.shipment = shipment
+            except OutboundShipment.DoesNotExist:
+                return False, "Selected shipment does not exist."
+        elif shipment_id == "":
+            demand.shipment = None
+
+        snapshot = demand.product.snapshots.select_for_update().order_by('-snapshot_date').first()
+        if not snapshot:
+            return False, f"No inventory snapshot found for {demand.product.sku}."
+
+        delta = new_alloc_qty - demand.allocated_qty
+
+        if delta > 0:
+            available_qty = snapshot.quantity_on_hand - snapshot.quantity_reserved
+            if available_qty < delta:
+                return False, f"Insufficient stock. Available: {available_qty:g}, Need: {delta:g}"
+
+        snapshot.quantity_reserved += delta
+        snapshot.save()
+
+        demand.allocated_qty = new_alloc_qty
+        demand.is_allocated = (new_alloc_qty > 0)
+        demand.save()
+
+    return True, f"Allocation updated. Reserved: {new_alloc_qty:g} units."
+
+
+def convert_entries_to_orders(entry_ids):
+    """
+    [New] 将用户选定的 ForecastEntry 转换为 ProductionOrder (Draft)
+    """
+    converted_count = 0
+    with transaction.atomic():
+        # 获取未转换的 entries
+        entries = ForecastEntry.objects.filter(id__in=entry_ids, production_order__isnull=True)
+
+        for entry in entries:
+            order_no = f"PO-{date.today():%y%m%d}-{entry.id}"
+            po = ProductionOrder.objects.create(
+                order_number=order_no,
+                product=entry.product,
+                quantity=entry.suggested_qty,
+                start_date=entry.suggested_start_date,
+                due_date=entry.eta_date,
+                status='DRAFT',
+                notes=f"Converted from Plan: {entry.plan.name}"
+            )
+            entry.production_order = po
+            entry.save()
+            converted_count += 1
+
+    return converted_count
 
 def create_po_from_plan(plan_id):
     """
@@ -284,3 +448,47 @@ def ship_allocated_demand(demand_id, shipment_date):
         demand.save()
 
     return True, f"Shipped {qty_to_ship:g} units."
+
+
+def auto_allocate_backlog(product):
+    """
+    当有新库存入库时调用。
+    自动查找该产品所有 Allocated < Total Quantity 的实际订单(Actual Demand)，
+    并按日期顺序自动分配现有库存。
+    """
+    # 1. 获取当前可用库存
+    snapshot = product.snapshots.order_by('-snapshot_date').first()
+    if not snapshot: return
+
+    available_stock = snapshot.quantity_on_hand - snapshot.quantity_reserved
+    if available_stock <= 0: return
+
+    # 2. 查找积压订单 (Backlog): 类型为ACTUAL, 未完全分配, 按日期排序(FIFO)
+    backlog_demands = MarketDemand.objects.filter(
+        product=product,
+        demand_type='ACTUAL',
+        shipped_date__isnull=True, # 未发货
+        allocated_qty__lt=F('quantity') # 分配量 < 需求量
+    ).order_by('period_date', 'created_at') # 优先满足旧订单
+
+    with transaction.atomic():
+        for demand in backlog_demands:
+            if available_stock <= 0: break
+
+            needed = demand.quantity - demand.allocated_qty
+
+            # 能够分配的数量
+            allocatable = min(available_stock, needed)
+
+            # 更新 Demand
+            demand.allocated_qty += allocatable
+            demand.is_allocated = True
+            demand.save()
+
+            # 更新 Inventory
+            snapshot.quantity_reserved += allocatable
+            snapshot.save() # 注意: quantity_on_hand 不变，只是 reserved 增加
+
+            available_stock -= allocatable
+
+            print(f"Auto-allocated {allocatable} units to Demand {demand.id} ({demand.country})")

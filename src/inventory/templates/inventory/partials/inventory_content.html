@@ -157,68 +157,74 @@
 <div class="container-fluid px-0 h-full flex flex-col">
 
     <div class="bg-white border-b border-gray-200 px-6 pt-4 sticky top-0 z-20 shadow-sm" id="dashboard-header">
-        <div class="flex justify-between items-center mb-4 gap-4">
+    <div class="flex justify-between items-center mb-4 gap-4">
+        <h2 class="text-xl font-bold text-gray-800 whitespace-nowrap">{{ page_title }} Dashboard</h2>
 
-            <div class="flex-1 max-w-4xl flex items-center space-x-3">
-
-                <h2 class="text-xl font-bold text-gray-800 whitespace-nowrap">{{ page_title }} Dashboard</h2>
-
-                <div class="relative flex-1">
-                    <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                        <svg class="h-4 w-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
-                    </div>
-                    <input type="text"
-                           id="inventory-search-input"
-                           value="{{ current_search }}"
-                           placeholder="Search SKU, Description..."
-                           class="block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-md leading-5 bg-white placeholder-gray-500 focus:outline-none focus:placeholder-gray-400 focus:ring-1 focus:ring-blue-500 focus:border-blue-500 sm:text-sm transition duration-150 ease-in-out"
-                           oninput="debounceSearch()">
-                </div>
-
-                <input type="hidden" id="inventory-category-filter" value="{{ current_category }}">
-
-                <div class="flex items-center space-x-2 overflow-x-auto no-scrollbar max-w-md pb-1" id="category-filter-container">
-                    <button type="button"
-                            onclick="setCategoryFilter('')"
-                            data-value=""
-                            class="category-filter-btn px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-colors shadow-sm border border-transparent {% if not current_category %}bg-gray-800 text-white{% else %}bg-gray-100 text-gray-600 hover:bg-gray-200 border-gray-200{% endif %}">
-                        All
-                    </button>
-                    {% for cat in all_categories %}
-                    <button type="button"
-                            onclick="setCategoryFilter('{{ cat }}')"
-                            data-value="{{ cat }}"
-                            class="category-filter-btn px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-colors shadow-sm border border-transparent {% if current_category == cat %}bg-gray-800 text-white{% else %}bg-gray-100 text-gray-600 hover:bg-gray-200 border-gray-200{% endif %}">
-                        {{ cat }}
-                    </button>
-                    {% endfor %}
-
-                    <button type="button"
-                            onclick="openManageCategoriesModal()"
-                            class="px-2 py-1.5 rounded-full text-gray-400 hover:bg-gray-100 hover:text-gray-600 transition-colors"
-                            title="Manage Categories">
-                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
-                    </button>
-                </div>
+        <div class="relative flex-1 w-full">
+            <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                <svg class="h-4 w-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
             </div>
-
-            <div class="flex items-center space-x-3">
-                <div class="bg-gray-100 p-1 rounded-lg flex items-center shadow-inner">
-                    <button type="button" onclick="toggleView('grid')" id="view-btn-grid" class="p-1.5 rounded-md text-gray-500 hover:text-gray-700 transition-all shadow-sm bg-white">
-                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"></path></svg>
-                    </button>
-                    <button type="button" onclick="toggleView('list')" id="view-btn-list" class="p-1.5 rounded-md text-gray-500 hover:text-gray-700 transition-all">
-                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path></svg>
-                    </button>
-                </div>
-                <div class="h-6 w-px bg-gray-300 mx-2"></div>
-                <button type="button" onclick="openImportModal()" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition flex items-center shadow-sm">
-                    <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path></svg>
-                    Import Data
-                </button>
-            </div>
+            <input type="text"
+                   id="inventory-search-input"
+                   value="{{ current_search }}"
+                   placeholder="Search SKU, Description..."
+                   class="block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-md leading-5 bg-white placeholder-gray-500 focus:outline-none focus:placeholder-gray-400 focus:ring-1 focus:ring-blue-500 focus:border-blue-500 sm:text-sm transition duration-150 ease-in-out"
+                   oninput="debounceSearch()">
         </div>
 
+        <div class="flex items-center space-x-3">
+            <div class="bg-gray-100 p-1 rounded-lg flex items-center shadow-inner">
+                <button type="button" onclick="toggleView('grid')" id="view-btn-grid" class="p-1.5 rounded-md text-gray-500 hover:text-gray-700 transition-all shadow-sm bg-white">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"></path></svg>
+                </button>
+                <button type="button" onclick="toggleView('list')" id="view-btn-list" class="p-1.5 rounded-md text-gray-500 hover:text-gray-700 transition-all">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path></svg>
+                </button>
+            </div>
+            <div class="h-6 w-px bg-gray-300 mx-2"></div>
+
+            {% if current_nature == 'FG' %}
+            <button type="button" onclick="openBomImportModal()" class="bg-white border border-gray-300 text-gray-700 hover:bg-gray-50 px-4 py-2 rounded-lg text-sm font-medium transition flex items-center shadow-sm">
+                <svg class="w-4 h-4 mr-2 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"></path></svg>
+                Import Recipes
+            </button>
+            {% endif %}
+
+            <button type="button" onclick="openImportModal()" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition flex items-center shadow-sm">
+                <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path></svg>
+                Import Data
+            </button>
+        </div>
+    </div>
+
+    <div class="flex flex-col md:flex-row items-start md:items-center gap-4 mb-4">
+        <div class="flex items-center space-x-2 overflow-x-auto no-scrollbar pb-1" id="category-filter-container">
+            <input type="hidden" id="inventory-category-filter" value="{{ current_category }}">
+            <button type="button"
+                    onclick="setCategoryFilter('')"
+                    data-value=""
+                    class="category-filter-btn px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-colors shadow-sm border border-transparent {% if not current_category %}bg-gray-800 text-white{% else %}bg-gray-100 text-gray-600 hover:bg-gray-200 border-gray-200{% endif %}">
+                All
+            </button>
+            {% for cat in all_categories %}
+            <button type="button"
+                    onclick="setCategoryFilter('{{ cat }}')"
+                    data-value="{{ cat }}"
+                    class="category-filter-btn px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-colors shadow-sm border border-transparent {% if current_category == cat %}bg-gray-800 text-white{% else %}bg-gray-100 text-gray-600 hover:bg-gray-200 border-gray-200{% endif %}">
+                {{ cat }}
+            </button>
+            {% endfor %}
+
+            <button type="button"
+                    onclick="openManageCategoriesModal()"
+                    class="px-2 py-1.5 rounded-full text-gray-400 hover:bg-gray-100 hover:text-gray-600 transition-colors"
+                    title="Manage Categories">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+            </button>
+        </div>
+    </div>
+
+    <div>
         <nav class="flex space-x-4 overflow-x-auto no-scrollbar" aria-label="Tabs">
             {% for tab in tabs_data %}
             <button type="button" onclick="switchTab('tab-{{ tab.group_id }}')" ondblclick="{% if not tab.is_all %}renameTab({{ tab.group_id }}, '{{ tab.name }}'){% endif %}" id="btn-tab-{{ tab.group_id }}" class="tab-btn whitespace-nowrap py-3 px-1 border-b-2 border-transparent font-medium text-sm text-gray-500 hover:text-gray-700 hover:border-gray-300 flex items-center group {% if forloop.first %}active{% endif %}" data-target="tab-{{ tab.group_id }}">
@@ -1469,6 +1475,109 @@
         }
     });
 
+    // === NEW: BOM Import Modal Logic ===
+    window.openBomImportModal = function() {
+        // Show modal container
+        const modal = document.getElementById('bomImportModal');
+        const content = document.getElementById('bomImportContent');
+        modal.classList.remove('hidden');
+        content.innerHTML = '<div class="p-8 text-center"><i class="fas fa-spinner fa-spin text-blue-500 text-2xl"></i><p class="mt-2 text-gray-500">Loading...</p></div>';
+
+        // Fetch Step 1 Form
+        fetch("{% url 'inventory:import_bom_load' %}")
+        .then(response => response.text())
+        .then(html => {
+            content.innerHTML = html;
+        })
+        .catch(err => {
+            content.innerHTML = '<div class="p-4 text-red-500">Error loading import form.</div>';
+            console.error(err);
+        });
+    }
+
+    window.closeBomImportModal = function() {
+        document.getElementById('bomImportModal').classList.add('hidden');
+    }
+
+    // Reuse the existing fetchModal helper logic or define specifically for BOM
+    window.fetchModal = function(url) {
+        const content = document.getElementById('bomImportContent');
+        content.innerHTML = '<div class="p-8 text-center"><i class="fas fa-spinner fa-spin text-blue-500 text-2xl"></i></div>';
+
+        fetch(url)
+        .then(response => response.text())
+        .then(html => {
+            content.innerHTML = html;
+        });
+    }
+
+    window.openImportModal = function() {
+        const modal = document.getElementById('importModal');
+        const content = document.getElementById('importModalContent');
+        modal.classList.remove('hidden');
+        content.innerHTML = '<div class="p-8 text-center"><i class="fas fa-spinner fa-spin text-blue-500 text-2xl"></i></div>';
+
+        fetch("{% url 'inventory:import_load' %}")
+            .then(response => response.text())
+            .then(html => {
+                content.innerHTML = html;
+            });
+    }
+
+    window.closeImportModal = function() {
+        document.getElementById('importModal').classList.add('hidden');
+    }
+
+    // === ADDED: Missing Functions for BOM Import ===
+    window.uploadBomFile = function() {
+        const form = document.getElementById('bomImportForm');
+        const formData = new FormData(form);
+        const statusDiv = document.getElementById('uploadStatus');
+
+        statusDiv.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Processing...';
+        statusDiv.classList.remove('hidden', 'text-red-500');
+        statusDiv.classList.add('text-blue-500');
+
+        fetch("{% url 'inventory:import_bom_process' %}", {
+            method: 'POST',
+            body: formData,
+            headers: {
+                'X-CSRFToken': '{{ csrf_token }}'
+            }
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                // Note: The ID here matches the container ID in inventory_content.html
+                document.getElementById('bomImportContent').innerHTML = data.html;
+            } else {
+                statusDiv.innerHTML = `<i class="fas fa-exclamation-circle"></i> ${data.message}`;
+                statusDiv.classList.replace('text-blue-500', 'text-red-500');
+            }
+        })
+        .catch(err => {
+            console.error(err);
+            statusDiv.innerHTML = 'Network Error';
+            statusDiv.classList.replace('text-blue-500', 'text-red-500');
+        });
+    }
+
+    window.finalizeBomImport = function() {
+        fetch("{% url 'inventory:import_bom_finalize' %}", {
+            method: 'POST',
+            headers: {'X-CSRFToken': '{{ csrf_token }}'}
+        })
+        .then(r => r.json())
+        .then(data => {
+            if(data.success) {
+                alert(data.message);
+                location.reload();
+            } else {
+                alert("Error: " + data.message);
+            }
+        });
+    }
+
 </script>
 
 <div id="manageCategoriesModal" class="hidden fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50"
@@ -1596,4 +1705,14 @@
             <button onclick="closeBomModal()" class="px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50 text-sm font-medium">Done</button>
         </div>
     </div>
+</div>
+
+<div id="importModal" class="hidden fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
+    <div class="relative top-20 mx-auto p-0 border w-[600px] shadow-lg rounded-lg bg-white flex flex-col overflow-hidden" id="importModalContent">
+        </div>
+</div>
+
+<div id="bomImportModal" class="hidden fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
+    <div class="relative top-20 mx-auto p-0 border w-[800px] shadow-lg rounded-lg bg-white flex flex-col overflow-hidden" id="bomImportContent">
+        </div>
 </div>

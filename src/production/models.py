@@ -1,5 +1,7 @@
 from django.db import models
 from django.utils import timezone
+from datetime import timedelta, date, datetime
+
 from inventory.models import Product
 
 class ProductionOrder(models.Model):
@@ -28,6 +30,26 @@ class ProductionOrder(models.Model):
     notes = models.TextField(blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+
+    def save(self, *args, **kwargs):
+        """
+        Override save to automatically calculate due_date.
+        Ensures start_date is a date object before calculation.
+        """
+        if not self.due_date and self.start_date:
+            # Check if start_date is a string and convert it if necessary
+            current_start = self.start_date
+            if isinstance(current_start, str):
+                try:
+                    # Attempt to parse common ISO format YYYY-MM-DD
+                    current_start = date.fromisoformat(current_start)
+                except ValueError:
+                    # Fallback for other potential formats if needed
+                    current_start = datetime.strptime(current_start, '%Y-%m-%d').date()
+
+            self.due_date = current_start + timedelta(days=3)
+
+        super().save(*args, **kwargs)
 
     class Meta:
         ordering = ['-created_at']

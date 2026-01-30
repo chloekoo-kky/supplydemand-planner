@@ -1,0 +1,84 @@
+<div class="p-6 h-full flex flex-col">
+    <div class="flex justify-between items-center mb-4">
+        <h3 class="text-lg font-bold text-gray-800">Preview Import</h3>
+        <div class="text-sm text-gray-500">
+            Checking connections...
+        </div>
+    </div>
+
+    <div class="flex-1 overflow-y-auto border rounded-lg">
+        <table class="min-w-full text-sm divide-y divide-gray-200">
+            <thead class="bg-gray-50 sticky top-0">
+                <tr>
+                    <th class="px-4 py-3 text-left font-medium text-gray-500">Parent (FG)</th>
+                    <th class="px-4 py-3 text-left font-medium text-gray-500">Component</th>
+                    <th class="px-4 py-3 text-right font-medium text-gray-500">Qty</th>
+                    <th class="px-4 py-3 text-center font-medium text-gray-500">Status</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-gray-200 bg-white">
+                {% for item in items %}
+                <tr class="{% if item.parent_status != 'OK' or item.comp_status != 'OK' %}bg-red-50{% endif %}">
+                    <td class="px-4 py-2">
+                        <div class="font-medium text-gray-900">{{ item.parent_input }}</div>
+                        {% if item.parent_found %}
+                            <div class="text-xs text-green-600">Matched: {{ item.parent_found }}</div>
+                        {% else %}
+                            <div class="text-xs text-red-600">Not Found</div>
+                        {% endif %}
+                    </td>
+                    <td class="px-4 py-2">
+                        <div class="font-medium text-gray-900">{{ item.comp_input }}</div>
+                        {% if item.comp_found %}
+                            <div class="text-xs text-green-600">Matched: {{ item.comp_found }}</div>
+                        {% else %}
+                            <div class="text-xs text-red-600">Not Found</div>
+                        {% endif %}
+                    </td>
+                    <td class="px-4 py-2 text-right font-mono">
+                        {{ item.qty }}
+                    </td>
+                    <td class="px-4 py-2 text-center">
+                        {% if item.parent_status == 'OK' and item.comp_status == 'OK' %}
+                            <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">
+                                Valid
+                            </span>
+                        {% else %}
+                            <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-red-100 text-red-800">
+                                {% if item.parent_status != 'OK' %}Parent Error{% else %}Comp Error{% endif %}
+                            </span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <div class="pt-4 flex justify-between items-center border-t mt-4">
+        <button onclick="fetchModal('{% url 'inventory:import_bom_load' %}')" class="text-gray-600 hover:text-gray-900 text-sm">
+            ← Back to Upload
+        </button>
+        <button onclick="finalizeBomImport()" class="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 shadow-sm transition-colors">
+            Confirm Import
+        </button>
+    </div>
+</div>
+
+<script>
+function finalizeBomImport() {
+    fetch("{% url 'inventory:import_bom_finalize' %}", {
+        method: 'POST',
+        headers: {'X-CSRFToken': '{{ csrf_token }}'}
+    })
+    .then(r => r.json())
+    .then(data => {
+        if(data.success) {
+            alert(data.message);
+            location.reload();
+        } else {
+            alert("Error: " + data.message);
+        }
+    });
+}
+</script>

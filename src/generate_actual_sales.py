@@ -75,7 +75,7 @@ def generate_actual_sales_data():
 
     return data, date_columns
 
-def save_to_excel(data, date_cols, filename="import_actuals_sample.xlsx"):
+def save_to_excel(data, date_cols, filename="actual_sales_sample.xlsx"):
     if not data: return
     df = pd.DataFrame(data)
     cols = ['SKU', 'Product Name'] + date_cols

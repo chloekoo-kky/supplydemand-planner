@@ -23,7 +23,7 @@ urlpatterns = [
     path('import/process/', views.process_import_file, name='import_process'),
     path('import/finalize/', views.finalize_import, name='import_finalize'),
     path('import/template/', views.download_import_template, name='import_template'),
-    
+
     path('product/update/<int:pk>/', views.product_update, name='product_update'),
 
     path('api/category/rename/', views.category_rename, name='category_rename'),
@@ -36,4 +36,7 @@ urlpatterns = [
     path('api/bom/delete/<int:bom_id>/', views.bom_delete, name='bom_delete'),
     path('api/product/search-components/', views.product_search_components, name='product_search_components'),
 
+    path('import-bom/load/', views.load_bom_import_modal, name='import_bom_load'),
+    path('import-bom/process/', views.process_bom_import_file, name='import_bom_process'),
+    path('import-bom/finalize/', views.finalize_bom_import, name='import_bom_finalize'),
 ]
