@@ -6,6 +6,7 @@ from dateutil.relativedelta import relativedelta
 from django.db import transaction
 from django.db.models import Sum, F, Q
 from decimal import Decimal, InvalidOperation
+from django.utils import timezone
 
 from inventory.models import Product, ProductAlias
 from production.models import ProductionOrder
@@ -79,15 +80,12 @@ def process_demand_file(file_obj, country, demand_type='FORECAST'):
     return True, f"成功导入 {imported_count} 条需求数据 ({country} - {demand_type})。"
 
 
-def run_mrp_engine(target_month_date):
+def calculate_mrp_logic(product, target_month_date):
     """
-    Advanced MRP Engine: Time-Phased (3-Month Lookahead).
-    Logic:
-    1. Demand = Actual Sales Orders (Unshipped).
-    2. Shortage calculation ignores safety stock and focuses on absolute deficit.
-    3. If End Balance is -360, Suggested Qty becomes 360 (or MOQ).
+    Core MRP Math isolated for a single product.
+    Refactored to use STRICT MONTHLY BUCKETS for both Demand and Supply.
+    Excludes Backlog (past demand) and Late Supply (past due POs).
     """
-    # Normalize target_month to 1st of month
     target_month_date = target_month_date.replace(day=1)
 
     months_horizon = [
@@ -96,119 +94,165 @@ def run_mrp_engine(target_month_date):
         target_month_date + relativedelta(months=2)
     ]
 
+    # 1. Initial Stock
+    last_snapshot = product.snapshots.order_by('-snapshot_date').first()
+    current_soh = float(last_snapshot.quantity_on_hand) if last_snapshot else 0.0
+
+    real_reserved = MarketDemand.objects.filter(
+        product=product,
+        is_allocated=True,
+        shipped_date__isnull=True
+    ).aggregate(t=Sum('allocated_qty'))['t'] or 0.0
+
+    current_reserved = float(real_reserved)
+    running_balance = current_soh - current_reserved
+
+    breakdown_data = {
+        "initial_stock": running_balance,
+        "months": []
+    }
+
+    target_month_shortage = 0.0
+
+    # 2. Rolling Calculation
+    for i, month_date in enumerate(months_horizon):
+        # Base Queries
+        base_demand_query = Q(product=product, shipped_date__isnull=True)
+        # Supply includes DRAFT now
+        base_supply_query = Q(
+            product=product,
+            status__in=['DRAFT', 'CONFIRMED', 'IN_PROGRESS']
+        )
+
+        # === REFACTORED SECTIONS START ===
+        # Use exact month matching for ALL months (including the first one).
+        # This ensures we only look at what is scheduled specifically for this month.
+
+        # A. Demand Filter (Strict Month Match)
+        time_filter_demand = Q(
+            period_date__year=month_date.year,
+            period_date__month=month_date.month
+        )
+
+        # B. Supply Filter (Strict Month Match)
+        time_filter_supply = Q(
+            due_date__year=month_date.year,
+            due_date__month=month_date.month
+        )
+        # === REFACTORED SECTIONS END ===
+
+        # A. Demand (Actuals Only as requested previously, or maintain logic)
+        current_demand_qs = MarketDemand.objects.filter(base_demand_query & time_filter_demand)
+        sum_stats = current_demand_qs.aggregate(
+            total_forecast=Sum('quantity', filter=Q(demand_type='FORECAST')),
+            total_actual=Sum('quantity', filter=Q(demand_type='ACTUAL')),
+            total_alloc=Sum('allocated_qty')
+        )
+
+        sum_forecast = float(sum_stats['total_forecast'] or 0.0)
+        sum_actual = float(sum_stats['total_actual'] or 0.0)
+        total_allocated = float(sum_stats['total_alloc'] or 0.0)
+
+        total_demand = sum_actual # MRP Policy: Actuals Only
+        gross_requirement = max(0, total_demand - total_allocated)
+
+        # B. Supply
+        inbound_agg = ProductionOrder.objects.filter(
+            base_supply_query & time_filter_supply
+        ).aggregate(total=Sum('quantity'))
+        projected_inbound = float(inbound_agg['total'] or 0.0)
+
+        # C. Balance
+        end_balance = running_balance + projected_inbound - gross_requirement
+
+        month_data = {
+            "month": month_date.strftime('%Y-%m'),
+            "demand": round(total_demand, 0),
+            "demand_forecast": round(sum_forecast, 0),
+            "allocated": round(total_allocated, 0),
+            "gross_req": round(gross_requirement, 0),
+            "inbound": round(projected_inbound, 0),
+            "balance": round(end_balance, 0),
+        }
+        breakdown_data["months"].append(month_data)
+
+        if i == 0 and end_balance < 0:
+            target_month_shortage = abs(end_balance)
+
+        running_balance = end_balance
+
+    # 3. Result
+    if target_month_shortage > 0:
+        moq = float(product.moq or 0.0)
+        suggested_qty = max(target_month_shortage, moq)
+        lead_time = getattr(product, 'lead_time_days', 0)
+        start_date = target_month_date - timedelta(days=lead_time)
+
+        return {
+            "suggested_qty": round(suggested_qty, 0),
+            "eta_date": target_month_date,
+            "suggested_start_date": start_date,
+            "calculation_note": json.dumps(breakdown_data)
+        }
+
+    return {
+        "suggested_qty": 0,
+        "eta_date": target_month_date,
+        "suggested_start_date": target_month_date,
+        "calculation_note": json.dumps(breakdown_data)
+    }
+
+# === Update run_mrp_engine to use the helper ===
+def run_mrp_engine(target_month_date):
+    """
+    Standard MRP Engine: Regenerates the entire plan.
+    """
+    target_month_date = target_month_date.replace(day=1)
+    plan_name = f"MRP Plan - {target_month_date.strftime('%Y-%m')}"
     products = Product.objects.filter(nature='FG')
-
-    plan_name = f"MRP Plan (Actuals) - {target_month_date.strftime('%Y-%m')}"
-    if ForecastPlan.objects.filter(name=plan_name).exists():
-        plan_name = f"{plan_name} v{datetime.now().strftime('%H%M%S')}"
-
     entries = []
 
     with transaction.atomic():
+        ForecastPlan.objects.filter(name=plan_name).delete()
         plan = ForecastPlan.objects.create(name=plan_name, target_month=target_month_date)
 
         for product in products:
-            # 1. Initial Stock: Net Available = Physical SOH - Hard Allocation
-            last_snapshot = product.snapshots.order_by('-snapshot_date').first()
-            current_soh = float(last_snapshot.quantity_on_hand) if last_snapshot else 0.0
-            current_reserved = float(last_snapshot.quantity_reserved) if last_snapshot else 0.0
-
-            running_balance = current_soh - current_reserved
-
-            breakdown_data = {
-                "initial_stock": running_balance,
-                "months": []
-            }
-
-            target_month_shortage = 0.0
-
-            # 2. Rolling Calculation for 3 Months
-            for i, month_date in enumerate(months_horizon):
-                next_month_start = month_date + relativedelta(months=1)
-
-                # --- Query Construction ---
-                base_demand_query = Q(product=product, demand_type='ACTUAL', shipped_date__isnull=True)
-                base_supply_query = Q(product=product, status__in=['CONFIRMED', 'IN_PROGRESS'])
-
-                if i == 0:
-                    # First Month: Cumulative Backlog (Past Due + Current Month)
-                    time_filter_demand = Q(period_date__lt=next_month_start)
-                    time_filter_supply = Q(due_date__lt=next_month_start)
-                else:
-                    # Future Months: Discrete Buckets
-                    time_filter_demand = Q(period_date__year=month_date.year, period_date__month=month_date.month)
-                    time_filter_supply = Q(due_date__year=month_date.year, due_date__month=month_date.month)
-
-                # A. Fetch Demand
-                demands_agg = MarketDemand.objects.filter(
-                    base_demand_query & time_filter_demand
-                ).aggregate(
-                    total_qty=Sum('quantity'),
-                    total_alloc=Sum('allocated_qty')
-                )
-
-                total_demand = float(demands_agg['total_qty'] or 0.0)
-                total_allocated = float(demands_agg['total_alloc'] or 0.0)
-                gross_requirement = max(0, total_demand - total_allocated)
-
-                # B. Fetch Supply (Inbound)
-                inbound_agg = ProductionOrder.objects.filter(
-                    base_supply_query & time_filter_supply
-                ).aggregate(total=Sum('quantity'))
-
-                projected_inbound = float(inbound_agg['total'] or 0.0)
-
-                # C. Balance Calculation (Ignoring Safety Stock)
-                end_balance = running_balance + projected_inbound - gross_requirement
-
-                # Safety stock is recorded as 0 to align with current requirement
-                safety_stock = 0.0
-
-                month_data = {
-                    "month": month_date.strftime('%Y-%m'),
-                    "demand": round(total_demand, 0),
-                    "allocated": round(total_allocated, 0),
-                    "gross_req": round(gross_requirement, 0),
-                    "inbound": round(projected_inbound, 0),
-                    "balance": round(end_balance, 0),
-                    "safety_stock": 0.0
-                }
-                breakdown_data["months"].append(month_data)
-
-                # D. Identify Shortage for Target Month (i=0)
-                if i == 0 and end_balance < 0:
-                    # Absolute deficit (e.g., -360 becomes 360)
-                    target_month_shortage = abs(end_balance)
-
-                # Carry forward the balance to the next month
-                running_balance = end_balance
-
-            # 3. Create Suggestion Entry
-            if target_month_shortage > 0:
-                moq = float(product.moq or 0.0)
-                # Suggestion is the larger of the deficit or the MOQ
-                suggested_qty = max(target_month_shortage, moq)
-
-                # Calculate start date based on lead time
-                lead_time = getattr(product, 'lead_time_days', 0)
-                start_date = target_month_date - timedelta(days=lead_time)
-
+            result = calculate_mrp_logic(product, target_month_date)
+            if result and result['suggested_qty'] > 0:
                 entries.append(ForecastEntry(
                     plan=plan,
                     product=product,
-                    suggested_qty=round(suggested_qty, 0),
-                    eta_date=target_month_date,
-                    suggested_start_date=start_date,
-                    calculation_note=json.dumps(breakdown_data)
+                    suggested_qty=result['suggested_qty'],
+                    eta_date=result['eta_date'],
+                    suggested_start_date=result['suggested_start_date'],
+                    calculation_note=result['calculation_note']
                 ))
 
         if entries:
             ForecastEntry.objects.bulk_create(entries)
-        else:
-            plan.name += " (Demand Covered)"
-            plan.save()
 
-    return True, f"MRP Complete. Generated {len(entries)} suggestions."
+    return True, f"MRP Complete. Updated Plan: {plan_name}"
+
+# === Add new function for Single Entry Refresh ===
+def refresh_single_entry_logic(entry_id):
+    try:
+        entry = ForecastEntry.objects.select_related('product', 'plan').get(pk=entry_id)
+    except ForecastEntry.DoesNotExist:
+        return False, "Entry not found."
+
+    target_month = entry.plan.target_month
+    result = calculate_mrp_logic(entry.product, target_month)
+
+    if result:
+        entry.suggested_qty = result['suggested_qty']
+        entry.eta_date = result['eta_date']
+        entry.suggested_start_date = result['suggested_start_date']
+        entry.calculation_note = result['calculation_note']
+        entry.save()
+        return True, f"Updated {entry.product.sku}: New Qty {entry.suggested_qty}"
+    else:
+        # Should not happen given logic, but safe fallback
+        return False, "Calculation failed."
 
 
 def convert_entries_to_orders(entry_ids):

@@ -22,6 +22,14 @@ fi
 echo "Running migrations..."
 python manage.py migrate
 
+# 【新增】自动填充演示数据
+# 逻辑：我们可以加一个环境变量 DEMO_MODE=True
+if [ "$DEMO_MODE" = "True" ]; then
+    echo "Creating Demo Data for Portfolio..."
+    # 运行我们刚才写的 command
+    python manage.py seed_data
+fi
+
 # 收集静态文件 (将 Admin 的 CSS/JS 收集到 static_volume)
 # 如果发现启动太慢，可以注释掉这一行，手动运行
 echo "Collecting static files..."

@@ -1,3 +1,7 @@
+{
+type: existing file
+fileName: supplydemand-planner/src/forecast/templates/forecast/partials/sales_forecast_content.html
+fullContent:
 <div class="w-full p-6" id="forecast-content-wrapper">
     <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
         <div>
@@ -54,6 +58,13 @@
                            onchange="window.doMonthFilter(this.value)"
                            class="border-transparent focus:border-transparent focus:ring-0 text-sm text-gray-700 py-1 bg-transparent h-8 w-32 text-center cursor-pointer"
                            title="Select Month">
+
+
+                    {% if current_month_filter %}
+                    <button onclick="window.doMonthFilter('')" class="ml-1 text-gray-400 hover:text-red-500" title="Clear Filter">
+                        <i class="bi bi-x-circle"></i>
+                    </button>
+                    {% endif %}
                 </div>
 
                 <button type="button" onclick="window.changeMonth(1)" class="p-2 hover:bg-gray-100 text-gray-500 hover:text-indigo-600 border-l border-gray-100" title="Next Month">
@@ -69,10 +80,10 @@
 
             <div class="flex space-x-2">
                 <button type="button" onclick="window.openForecastImportModal('FORECAST')" class="px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-md shadow-sm hover:bg-gray-50 flex items-center text-sm font-medium">
-                    <i class="bi bi-graph-up-arrow mr-2 text-blue-600"></i> Import
+                    <i class="bi bi-graph-up-arrow mr-2 text-blue-600"></i> Import Forecast
                 </button>
                 <button type="button" onclick="window.openForecastImportModal('ACTUAL')" class="px-4 py-2 bg-blue-600 text-white rounded-md shadow hover:bg-blue-700 flex items-center text-sm font-medium">
-                    <i class="bi bi-cart-check mr-2"></i> Actuals
+                    <i class="bi bi-cart-check mr-2"></i> Import Actuals
                 </button>
             </div>
         </div>
@@ -279,6 +290,7 @@
                                                             onclick="window.openAllocationModal(
                                                                 '{{ detail.actual_obj.pk }}',
                                                                 '{{ detail.product.sku|escapejs }}',
+                                                                '{{ detail.product.description|escapejs }}',
                                                                 '{{ detail.actual_qty }}',
                                                                 '{{ detail.actual_obj.allocated_qty|default:0 }}',
                                                                 '{{ group.available_stock|default:0|floatformat:0 }}',
@@ -315,6 +327,64 @@
                 </tbody>
             </table>
         </div>
+
+        {# === PAGINATION CONTROLS === #}
+        {% if grouped_demands.has_other_pages %}
+        <div class="px-6 py-3 flex items-center justify-between border-t border-gray-200 bg-gray-50">
+            <div class="flex-1 flex justify-between sm:hidden">
+                {% if grouped_demands.has_previous %}
+                    <button onclick="window.changePage({{ grouped_demands.previous_page_number }})" class="relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50">Previous</button>
+                {% else %}
+                    <span class="relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-300 bg-white cursor-not-allowed">Previous</span>
+                {% endif %}
+
+                {% if grouped_demands.has_next %}
+                    <button onclick="window.changePage({{ grouped_demands.next_page_number }})" class="ml-3 relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50">Next</button>
+                {% else %}
+                    <span class="ml-3 relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-300 bg-white cursor-not-allowed">Next</span>
+                {% endif %}
+            </div>
+            <div class="hidden sm:flex-1 sm:flex sm:items-center sm:justify-between">
+                <div>
+                    <p class="text-sm text-gray-700">
+                        Showing <span class="font-medium">{{ grouped_demands.start_index }}</span> to <span class="font-medium">{{ grouped_demands.end_index }}</span> of <span class="font-medium">{{ grouped_demands.paginator.count }}</span> results
+                    </p>
+                </div>
+                <div>
+                    <nav class="relative z-0 inline-flex rounded-md shadow-sm -space-x-px" aria-label="Pagination">
+                        {# Previous #}
+                        <button onclick="window.changePage({% if grouped_demands.has_previous %}{{ grouped_demands.previous_page_number }}{% else %}1{% endif %})"
+                                class="relative inline-flex items-center px-2 py-2 rounded-l-md border border-gray-300 bg-white text-sm font-medium {% if grouped_demands.has_previous %}text-gray-500 hover:bg-gray-50{% else %}text-gray-300 cursor-not-allowed{% endif %}"
+                                {% if not grouped_demands.has_previous %}disabled{% endif %}>
+                            <span class="sr-only">Previous</span>
+                            <i class="bi bi-chevron-left"></i>
+                        </button>
+
+                        {# Page Numbers #}
+                        {% for i in grouped_demands.paginator.page_range %}
+                            {% if grouped_demands.number == i %}
+                                <span class="relative inline-flex items-center px-4 py-2 border border-blue-500 bg-blue-50 text-sm font-medium text-blue-600 z-10">
+                                    {{ i }}
+                                </span>
+                            {% else %}
+                                <button onclick="window.changePage({{ i }})" class="relative inline-flex items-center px-4 py-2 border border-gray-300 bg-white text-sm font-medium text-gray-700 hover:bg-gray-50">
+                                    {{ i }}
+                                </button>
+                            {% endif %}
+                        {% endfor %}
+
+                        {# Next #}
+                        <button onclick="window.changePage({% if grouped_demands.has_next %}{{ grouped_demands.next_page_number }}{% else %}1{% endif %})"
+                                class="relative inline-flex items-center px-2 py-2 rounded-r-md border border-gray-300 bg-white text-sm font-medium {% if grouped_demands.has_next %}text-gray-500 hover:bg-gray-50{% else %}text-gray-300 cursor-not-allowed{% endif %}"
+                                {% if not grouped_demands.has_next %}disabled{% endif %}>
+                            <span class="sr-only">Next</span>
+                            <i class="bi bi-chevron-right"></i>
+                        </button>
+                    </nav>
+                </div>
+            </div>
+        </div>
+        {% endif %}
     </div>
 </div>
 
@@ -323,25 +393,10 @@
 
 <script>
     // === 1. Initialize State & Persistence ===
-    (function initFilterState() {
-        const storedMonth = sessionStorage.getItem('forecast_active_month');
-        const serverMonth = '{{ current_month_filter }}';
-
-        if (!serverMonth && storedMonth) {
-            document.getElementById('monthFilter').value = storedMonth;
-            window.currentMonthState = storedMonth;
-            setTimeout(() => {
-                window.doMonthFilter(storedMonth, false);
-            }, 50);
-        } else {
-            if (serverMonth) {
-                sessionStorage.setItem('forecast_active_month', serverMonth);
-            }
-            window.currentMonthState = serverMonth;
-        }
-
-        window.currentSortState = '{{ current_sort }}';
-    })();
+    window.currentMonthState = '{{ current_month_filter }}';
+    window.currentSortState = '{{ current_sort }}';
+    // [NEW] Track current page (defaults to server-side loaded page if we were to support deep linking better, but 1 is safe for JS resets)
+    window.currentPageState = 1;
 
     // ... (Bind AJAX Submission) ...
     (function setupAllocationForm() {
@@ -364,7 +419,7 @@
                     if (response.ok) {
                         window.closeAllocModal();
                         const query = document.getElementById('searchInput') ? document.getElementById('searchInput').value : '';
-                        reloadContent(query, window.currentSortState, window.currentMonthState);
+                        reloadContent(query, window.currentSortState, window.currentMonthState, window.currentPageState);
                     } else { alert("Error saving allocation."); }
                 })
                 .catch(err => { console.error(err); alert("Network error."); })
@@ -396,12 +451,13 @@
     }
 
     // [MODIFIED] Added shipmentId param to auto-select dropdown
-    window.openAllocationModal = function(pk, sku, demandQty, currentAlloc, availableStock, shipmentId) {
+    window.openAllocationModal = function(pk, sku, description, demandQty, currentAlloc, availableStock, shipmentId) {
         const modal = document.getElementById('allocationModal');
         const form = document.getElementById('allocationForm');
         if (!modal || !form) return;
         form.action = `/forecast/allocate/${pk}/`;
         document.getElementById('allocSku').innerText = sku;
+        document.getElementById('allocDesc').innerText = description; // [NEW] Set description
         document.getElementById('allocAvailable').innerText = availableStock;
         document.getElementById('allocDemandQty').value = demandQty;
 
@@ -424,14 +480,17 @@
     }
 
     window.doSearch = function(query) {
-        reloadContent(query, window.currentSortState, window.currentMonthState);
+        reloadContent(query, window.currentSortState, window.currentMonthState, 1);
     }
 
     window.doMonthFilter = function(month) {
-        sessionStorage.setItem('forecast_active_month', month);
+        if (month !== undefined) {
+             document.cookie = "sales_forecast_month=" + month + "; path=/; SameSite=Lax";
+        }
+
         window.currentMonthState = month;
         const query = document.getElementById('searchInput').value;
-        reloadContent(query, window.currentSortState, month);
+        reloadContent(query, window.currentSortState, month, 1);
     }
 
     // === NEW: Quick Month Navigation ===
@@ -446,17 +505,19 @@
         }
 
         const [year, month] = currentVal.split('-').map(Number);
-
-        // Create date object (Month is 0-indexed in JS)
-        // Set date to 1 to avoid rollover issues
         const dateObj = new Date(year, month - 1 + offset, 1);
-
         const newYear = dateObj.getFullYear();
         const newMonth = String(dateObj.getMonth() + 1).padStart(2, '0');
         const newVal = `${newYear}-${newMonth}`;
 
         input.value = newVal;
         window.doMonthFilter(newVal);
+    }
+
+    // [NEW] Change Page
+    window.changePage = function(page) {
+        const query = document.getElementById('searchInput').value;
+        reloadContent(query, window.currentSortState, window.currentMonthState, page);
     }
 
     window.doSort = function(currentSort, field) {
@@ -470,15 +531,23 @@
         else if (field === 'rate') newSort = (currentSort === 'rate_desc') ? 'rate_asc' : 'rate_desc';
 
         const query = document.getElementById('searchInput').value;
-        reloadContent(query, newSort, window.currentMonthState);
+        reloadContent(query, newSort, window.currentMonthState, 1);
     }
 
-    function reloadContent(query, sort, month) {
+    function reloadContent(query, sort, month, page) {
         window.currentSortState = sort;
         window.currentMonthState = month;
+        window.currentPageState = page || 1;
+
         let url = `{% url 'forecast:sales_forecast' %}?q=${encodeURIComponent(query)}&sort=${sort}`;
         if (month) {
             url += `&month=${month}`;
+        } else {
+             url += `&month=`; // Clear filter explicit param
+        }
+
+        if (page) {
+            url += `&page=${page}`;
         }
 
         fetch(url, {
@@ -510,3 +579,5 @@
     .rotate-90 { transform: rotate(90deg); }
     .select-none { user-select: none; }
 </style>
+
+}

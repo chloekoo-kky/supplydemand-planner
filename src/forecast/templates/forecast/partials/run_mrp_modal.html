@@ -26,22 +26,19 @@
                     <div class="px-4 py-5 sm:p-6">
                         <p class="text-sm text-gray-500 mb-4">
                             This will calculate net requirements based on
-                            <strong class="text-gray-900">Total Forecast</strong> vs <strong class="text-gray-900">Current Stock</strong>.
+                            <strong class="text-gray-900">Total Forecast</strong> vs <strong class="text-gray-900">Current Stock</strong> for the selected period.
                         </p>
 
                         <div class="bg-gray-50 p-4 rounded-lg border border-gray-200 flex flex-col items-center justify-center">
-                            <span class="text-xs text-gray-500 uppercase tracking-wider font-semibold">Target Period</span>
+                            <label for="mrpTargetMonth" class="text-xs text-gray-500 uppercase tracking-wider font-semibold mb-2">Target Period</label>
 
-                            <span class="text-2xl font-bold text-green-700 font-mono mt-1">
-                                {{ current_month }}
-                            </span>
-
-                            <input type="hidden" name="target_month" value="{{ current_month }}">
+                            <input type="month"
+                                   id="mrpTargetMonth"
+                                   name="target_month"
+                                   required
+                                   value="{% if current_month %}{{ current_month }}{% else %}{% now 'Y-m' %}{% endif %}"
+                                   class="block w-full max-w-[200px] rounded-md border-0 py-2 text-green-700 shadow-sm ring-1 ring-inset ring-gray-300 focus:ring-2 focus:ring-inset focus:ring-green-600 sm:text-lg sm:leading-6 text-center font-bold font-mono">
                         </div>
-
-                        <p class="text-xs text-gray-400 text-center mt-2">
-                            To change the month, please use the filter on the main dashboard.
-                        </p>
                     </div>
 
                     <div class="bg-gray-50 px-4 py-3 sm:flex sm:flex-row-reverse sm:px-6">

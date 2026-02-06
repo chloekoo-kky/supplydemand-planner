@@ -4,6 +4,7 @@ from django.db.models import Sum
 from django.utils import timezone
 from datetime import date
 from django.views.decorators.http import require_POST
+from django.core.paginator import Paginator, EmptyPage, PageNotAnInteger
 from collections import defaultdict
 from itertools import groupby
 
@@ -12,28 +13,18 @@ from inventory.models import Product, InventorySnapshot
 from .forms import ImportDemandForm, RunMRPForm
 from .services import (
     process_demand_file, run_mrp_engine,
-    create_po_from_plan, allocate_stock_for_demand,
-    ship_allocated_demand, convert_entries_to_orders
+    allocate_stock_for_demand, ship_allocated_demand,
+    convert_entries_to_orders, refresh_single_entry_logic
 )
 
 def forecast_dashboard(request):
     """
     Refactored Command Center.
-    KPIs moved to Sales Forecast. This view now focuses on Outbound Queue & MRP.
+    Focuses ONLY on Outbound Queue & Fulfillment.
     """
+    # 1. 处理 POST 逻辑 (保持不变)
     if request.method == 'POST':
-        if 'run_mrp' in request.POST:
-            form = RunMRPForm(request.POST)
-            if form.is_valid():
-                success, msg = run_mrp_engine(form.cleaned_data['target_month'])
-                if success: messages.success(request, msg)
-                else: messages.warning(request, msg)
-            else:
-                # [新增] 如果校验失败，告诉用户原因
-                messages.error(request, f"MRP 启动失败: {form.errors}")
-            return redirect('forecast:dashboard')
-        
-        elif 'ship_item' in request.POST:
+        if 'ship_item' in request.POST:
             demand_id = request.POST.get('demand_id')
             ship_date_str = request.POST.get('shipment_date')
             if not ship_date_str: ship_date = date.today()
@@ -43,51 +34,98 @@ def forecast_dashboard(request):
             else: messages.error(request, msg)
             return redirect('forecast:dashboard')
 
-    # Filter Logic (Still needed for Queue filtering)
-    selected_month_str = request.GET.get('month')
+    # === [关键修改 1] 独立的状态保持逻辑 (Dashboard) ===
+
+    # A. 处理月份 (Month)
+    selected_month_str = request.GET.get('month') # 尝试从 URL 获取
+    use_date_filter = True
+
+    if selected_month_str is None:
+        # 如果 URL 没带参数，尝试读 Dashboard 专属的 Cookie
+        selected_month_str = request.COOKIES.get('dashboard_month')
+
+    # 如果读出来是空字符串（用户之前可能点了“全部月份”），则不开启过滤
     if not selected_month_str:
-        selected_month_str = request.COOKIES.get('forecast_dashboard_month')
-    try:
-        if not selected_month_str: raise ValueError
-        selected_year, selected_month = map(int, selected_month_str.split('-'))
-    except:
-        filter_date = date.today().replace(day=1)
-        selected_month_str = filter_date.strftime('%Y-%m')
-        selected_year = filter_date.year
-        selected_month = filter_date.month
+        use_date_filter = False
+        selected_month_str = None
 
-    # === Outbound Queue Logic ===
-    month_demands = MarketDemand.objects.filter(
-        demand_type='ACTUAL',
-        period_date__year=selected_year,
-        period_date__month=selected_month
-    )
+    # 解析日期 (保持不变)
+    selected_year, selected_month = None, None
+    if selected_month_str:
+        try:
+            selected_year, selected_month = map(int, selected_month_str.split('-'))
+        except ValueError:
+            use_date_filter = False
+            selected_month_str = None
 
-    # 1. Fetch relevant shipments
-    target_shipments = OutboundShipment.objects.filter(
-        status='PLANNING',
-        etd__year=selected_year,
-        etd__month=selected_month
-    ).prefetch_related('demands', 'demands__product')
+    # B. 处理搜索词 (Query)
+    # 逻辑：如果 URL 没有 q 参数，就读 Cookie；如果有，就用新的并准备更新 Cookie
+    query = request.GET.get('q')
+    if query is None:
+        query = request.COOKIES.get('dashboard_query', '')
 
+    query = query.strip().lower()
+
+    # === 业务查询逻辑 (保持不变) ===
+    demands_qs = MarketDemand.objects.filter(demand_type='ACTUAL')
+    shipments_qs = OutboundShipment.objects.filter(status='PLANNING')
+
+    if use_date_filter:
+        demands_qs = demands_qs.filter(
+            period_date__year=selected_year,
+            period_date__month=selected_month
+        )
+        shipments_qs = shipments_qs.filter(
+            etd__year=selected_year,
+            etd__month=selected_month
+        )
+
+    target_shipments = shipments_qs.prefetch_related('demands', 'demands__product')
     queue_groups = []
 
-    # Part A: Shipments for this month
+    # Part A: Shipments Filter (应用 query)
     for ship in target_shipments:
         items = list(ship.demands.filter(shipped_date__isnull=True).select_related('product'))
-        queue_groups.append({
-            'shipment': ship,
-            'items': items,
-            'total_qty': sum(i.allocated_qty for i in items),
-            'count': len(items)
-        })
 
-    # Part B: Unassigned Items
-    unassigned_items = list(month_demands.filter(
+        # 搜索逻辑
+        ship_match = True
+        if query:
+            ship_match = (query in ship.reference.lower()) or \
+                         (ship.destination and query in ship.destination.lower())
+            if not ship_match:
+                items = [
+                    i for i in items
+                    if (query in i.product.sku.lower()) or (query in i.country.lower())
+                ]
+
+        should_show = False
+        if query:
+            if ship_match or items: should_show = True
+        else:
+            should_show = True
+
+        if should_show:
+            queue_groups.append({
+                'shipment': ship,
+                'items': items,
+                'total_qty': sum(i.allocated_qty for i in items),
+                'count': len(items)
+            })
+
+    # Part B: Unassigned Items Filter (应用 query)
+    unassigned_qs = demands_qs.filter(
         is_allocated=True,
         shipped_date__isnull=True,
         shipment__isnull=True
-    ).select_related('product'))
+    ).select_related('product')
+
+    unassigned_items = list(unassigned_qs)
+
+    if query:
+        unassigned_items = [
+            i for i in unassigned_items
+            if (query in i.product.sku.lower()) or (query in i.country.lower())
+        ]
 
     if unassigned_items:
         queue_groups.append({
@@ -98,24 +136,62 @@ def forecast_dashboard(request):
         })
 
     queue_groups.sort(key=lambda x: (x['shipment'].etd if x['shipment'] else date.min))
-
     active_shipments = OutboundShipment.objects.filter(status='PLANNING').order_by('etd')
-    plans = ForecastPlan.objects.all().order_by('-created_at')
 
     context = {
-        'plans': plans,
-        'mrp_form': RunMRPForm(),
-        'total_plans': plans.count(),
         'current_month': selected_month_str,
+        'current_query': query,
         'queue_groups': queue_groups,
         'active_shipments': active_shipments,
         'today_date': date.today().isoformat()
     }
 
     if request.headers.get('x-requested-with') == 'XMLHttpRequest':
-        return render(request, 'forecast/partials/dashboard_content.html', context)
+        response = render(request, 'forecast/partials/fulfillment_content.html', context)
+    else:
+        response = render(request, 'forecast/forecast_dashboard.html', context)
 
-    return render(request, 'forecast/forecast_dashboard.html', context)
+    # === [关键修改 2] 写入 Dashboard 专属 Cookie ===
+    # 只有当 URL 中显式传递了参数时，才更新 Cookie
+    if request.GET.get('month') is not None:
+        response.set_cookie('dashboard_month', request.GET.get('month'))
+
+    if request.GET.get('q') is not None:
+        response.set_cookie('dashboard_query', request.GET.get('q'))
+
+    return response
+
+
+def planning_dashboard(request):
+    """
+    [NEW] Dedicated page for MRP Engine and Forecast Plans.
+    """
+    if request.method == 'POST' and 'run_mrp' in request.POST:
+        form = RunMRPForm(request.POST)
+        if form.is_valid():
+            success, msg = run_mrp_engine(form.cleaned_data['target_month'])
+            if success: messages.success(request, msg)
+            else: messages.warning(request, msg)
+        else:
+            messages.error(request, f"MRP Launch Failed: {form.errors}")
+        return redirect('forecast:planning_dashboard')
+
+    plans = ForecastPlan.objects.all().order_by('-created_at')
+    mrp_initial_date = date.today().replace(day=1)
+
+    context = {
+        'plans': plans,
+        'mrp_form': RunMRPForm(initial={'target_month': mrp_initial_date}),
+        'total_plans': plans.count(),
+    }
+
+    # Check if request is AJAX
+    if request.headers.get('x-requested-with') == 'XMLHttpRequest':
+        return render(request, 'forecast/partials/planning_dashboard_content.html', context)
+
+    # For direct browser refresh, you might need a separate wrapper template
+    # or keep the extends and use a variable to toggle it.
+    return render(request, 'forecast/planning_dashboard.html', context)
 
 
 @require_POST
@@ -133,10 +209,10 @@ def create_shipment(request):
 
     return redirect('forecast:dashboard')
 
+
 @require_POST
 def edit_shipment(request, pk):
     shipment = get_object_or_404(OutboundShipment, pk=pk)
-
     new_ref = request.POST.get('reference')
     new_etd = request.POST.get('etd')
     new_dest = request.POST.get('destination', '').strip()
@@ -163,7 +239,7 @@ def edit_shipment(request, pk):
 
 def sales_forecast(request):
     """
-    Unified View with Dynamic KPIs based on filtered results.
+    Unified View with Dynamic KPIs based on filtered results and Pagination.
     """
     if request.method == 'POST' and 'import_demand' in request.POST:
         form = ImportDemandForm(request.POST, request.FILES)
@@ -229,8 +305,15 @@ def sales_forecast(request):
     grouped_list = list(grouped_map.values())
 
     # 4. Filter by Month
-    selected_month = request.GET.get('month', '').strip()
-    if selected_month:
+    selected_month = request.GET.get('month')
+    if selected_month is None:
+        # 读取 Sales Forecast 专属 Cookie
+        selected_month = request.COOKIES.get('sales_forecast_month')
+
+    if selected_month is None: selected_month = ''
+    selected_month = selected_month.strip()
+
+    if selected_month and selected_month.upper() != 'ALL':
         filtered_by_month = []
         for group in grouped_list:
             if group['period'].strftime('%Y-%m') == selected_month:
@@ -238,7 +321,13 @@ def sales_forecast(request):
         grouped_list = filtered_by_month
 
     # 5. Filter by Search
-    query = request.GET.get('q', '').strip().lower()
+    query = request.GET.get('q')
+    if query is None:
+        # 读取 Sales Forecast 专属 Query Cookie
+        query = request.COOKIES.get('sales_forecast_query', '')
+
+    query = query.strip().lower()
+
     if query:
         filtered_list = []
         for group in grouped_list:
@@ -248,16 +337,14 @@ def sales_forecast(request):
                 filtered_list.append(group)
         grouped_list = filtered_list
 
-    # === [NEW] Calculate KPIs based on Filtered Data ===
+    # === KPIs ===
     kpi_total_orders = 0
     kpi_allocated_pending = 0
     kpi_shipped = 0
 
     for group in grouped_list:
         kpi_total_orders += group['total_actual']
-        kpi_allocated_pending += group['total_allocated'] # This is reserved/pending
-
-        # To get shipped qty, we must look at details because it's not in the group sum
+        kpi_allocated_pending += group['total_allocated']
         for detail in group['details']:
             if detail['actual_obj'] and detail['actual_obj'].shipped_date:
                 kpi_shipped += detail['actual_qty']
@@ -267,7 +354,10 @@ def sales_forecast(request):
     else:
         kpi_fulfillment_rate = 0
 
+    # 6. Sorting
     sort_by = request.GET.get('sort', 'date_asc')
+    # ... (Sort logic omitted for brevity but assumed present in your file, ensure it matches original) ...
+    # [Restoring sort logic block to be safe]
     if sort_by == 'date_desc':
         grouped_list.sort(key=lambda x: x['product'].sku)
         grouped_list.sort(key=lambda x: x['period'], reverse=True)
@@ -314,29 +404,38 @@ def sales_forecast(request):
     for group in grouped_list:
         group['details'].sort(key=lambda x: x['country'])
 
-    if grouped_list:
-        product_ids = set(g['product'].id for g in grouped_list)
+    # 7. Pagination
+    paginator = Paginator(grouped_list, 10)
+    page_number = request.GET.get('page')
+    try:
+        page_obj = paginator.page(page_number)
+    except PageNotAnInteger:
+        page_obj = paginator.page(1)
+    except EmptyPage:
+        page_obj = paginator.page(paginator.num_pages)
+
+    # 8. Calculate Inventory Availability
+    if page_obj:
+        product_ids = set(g['product'].id for g in page_obj)
         snapshots = InventorySnapshot.objects.filter(product_id__in=product_ids).order_by('product_id', '-snapshot_date')
         stock_map = {}
         for s in snapshots:
             if s.product_id not in stock_map:
                 stock_map[s.product_id] = s.quantity_on_hand - s.quantity_reserved
-        for group in grouped_list:
+
+        for group in page_obj:
             pid = group['product'].id
             group['available_stock'] = stock_map.get(pid, 0)
 
-    # [KEY FIX] Pass Active Shipments to Context
     active_shipments = OutboundShipment.objects.filter(status='PLANNING').order_by('etd')
 
     context = {
-        'grouped_demands': grouped_list,
+        'grouped_demands': page_obj,
         'import_form': ImportDemandForm(),
         'current_sort': sort_by,
         'current_query': request.GET.get('q', ''),
         'current_month_filter': selected_month,
         'active_shipments': active_shipments,
-
-        # KPIs
         'kpi_total_orders': kpi_total_orders,
         'kpi_allocated_pending': kpi_allocated_pending,
         'kpi_shipped': kpi_shipped,
@@ -344,10 +443,18 @@ def sales_forecast(request):
     }
 
     if request.headers.get('x-requested-with') == 'XMLHttpRequest':
-        return render(request, 'forecast/partials/sales_forecast_content.html', context)
+        response = render(request, 'forecast/partials/sales_forecast_content.html', context)
+    else:
+        response = render(request, 'forecast/sales_forecast.html', context)
 
-    return render(request, 'forecast/sales_forecast.html', context)
+    # === [关键修改 4] 写入 Sales Forecast 专属 Cookie ===
+    if request.GET.get('month') is not None:
+        response.set_cookie('sales_forecast_month', request.GET.get('month'))
 
+    if request.GET.get('q') is not None:
+        response.set_cookie('sales_forecast_query', request.GET.get('q'))
+
+    return response
 
 @require_POST
 def allocate_demand(request, pk):
@@ -359,7 +466,6 @@ def allocate_demand(request, pk):
         return redirect('forecast:sales_forecast')
 
     if not shipment_id: shipment_id = None
-
     success, msg = allocate_stock_for_demand(pk, allocate_qty, shipment_id)
 
     if success: messages.success(request, msg)
@@ -369,24 +475,19 @@ def allocate_demand(request, pk):
 
 def plan_detail(request, pk):
     plan = get_object_or_404(ForecastPlan, pk=pk)
-
     if request.method == 'POST':
-        # 获取用户勾选的 entry IDs
         selected_ids = request.POST.getlist('selected_entries')
-
         if selected_ids:
             count = convert_entries_to_orders(selected_ids)
             if count > 0:
-                messages.success(request, f"成功创建 {count} 张生产工单 (Draft)。")
-                # 检查是否全部转换完成，如果是，锁定计划
+                messages.success(request, f"Successfully created {count} production orders.")
                 if not plan.entries.filter(production_order__isnull=True).exists():
                     plan.is_locked = True
                     plan.save()
             else:
-                messages.warning(request, "未生成任何工单（可能已转换过）。")
+                messages.warning(request, "No orders created (items might be already converted).")
         else:
-            messages.warning(request, "请先勾选需要转换的生产建议。")
-
+            messages.warning(request, "Please select items to convert.")
         return redirect('forecast:plan_detail', pk=pk)
 
     return render(request, 'forecast/plan_detail.html', {'plan': plan})
@@ -397,3 +498,38 @@ def delete_plan(request, pk):
     plan.delete()
     messages.success(request, "Plan deleted.")
     return redirect('forecast:dashboard')
+
+def refresh_plan(request, pk):
+    """
+    Regenerates the entire plan for the specific month.
+    """
+    plan = get_object_or_404(ForecastPlan, pk=pk)
+    target_month = plan.target_month
+
+    # This will delete the current plan object and create a new one
+    success, msg = run_mrp_engine(target_month)
+
+    if success:
+        messages.success(request, f"Plan for {target_month:%b %Y} refreshed successfully.")
+    else:
+        messages.error(request, msg)
+
+    return redirect('forecast:planning_dashboard')
+
+def refresh_entry(request, pk):
+    """
+    Recalculates MRP for a specific entry row.
+    """
+    success, msg = refresh_single_entry_logic(pk)
+
+    # We need to find the plan PK to redirect back.
+    # Since entry might be saved, we can get it from the entry object in DB or before call
+    # Logic: refresh_single_entry_logic updates the object in place, so the ID is valid.
+    entry = get_object_or_404(ForecastEntry, pk=pk)
+
+    if success:
+        messages.success(request, msg)
+    else:
+        messages.error(request, msg)
+
+    return redirect('forecast:plan_detail', pk=entry.plan.pk)

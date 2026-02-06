@@ -1,40 +1,67 @@
 <div class="space-y-6 p-6" id="dashboard-content-wrapper">
 
-    <div class="flex flex-col md:flex-row justify-between items-center gap-4 mb-2">
+    <div class="flex flex-col md:flex-row justify-between items-center gap-4 mb-6">
         <div>
-            <h2 class="text-2xl font-bold text-gray-800">Forecast & Fulfillment</h2>
-            <p class="text-sm text-gray-500">Overview for <span class="font-bold text-indigo-600" id="currentMonthDisplay">{{ current_month }}</span></p>
+            <h2 class="text-2xl font-bold text-gray-800">Shipments & Fulfillment</h2>
+            <p class="text-sm text-gray-500">
+                Overview for <span class="font-bold text-indigo-600" id="currentMonthDisplay">{% if current_month %}{{ current_month }}{% else %}All Time{% endif %}</span>
+            </p>
         </div>
 
-        <div class="flex items-center bg-white rounded-lg shadow-sm border border-gray-200">
-            <button type="button" onclick="window.changeMonth(-1)" class="p-2 hover:bg-gray-100 text-gray-500 hover:text-indigo-600 rounded-l-lg transition border-r border-gray-100" title="Previous Month">
-                <i class="bi bi-chevron-left"></i>
-            </button>
-
-            <div class="flex items-center px-2">
-                <label for="monthFilter" class="sr-only">Period</label>
-                <input type="month" id="monthFilter" value="{{ current_month }}"
-                       onchange="applyDashboardFilter(this.value)"
-                       class="border-transparent focus:border-transparent focus:ring-0 text-sm text-gray-700 py-1 bg-transparent h-8 w-32 text-center cursor-pointer"
-                       title="Select Month">
+        <div class="flex flex-col sm:flex-row gap-3 items-end sm:items-center">
+            <div class="relative">
+                <input type="text"
+                       id="searchInput"
+                       value="{{ current_query }}"
+                       placeholder="Search Container, SKU, or Country..."
+                       class="w-64 pl-10 pr-4 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 text-sm"
+                       onkeydown="if(event.key === 'Enter') window.doSearch(this.value)">
+                <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                    <i class="bi bi-search text-gray-400"></i>
+                </div>
+                {% if current_query %}
+                <button onclick="window.doSearch('')" class="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-600">
+                    <i class="bi bi-x-circle-fill"></i>
+                </button>
+                {% endif %}
             </div>
 
-            <button type="button" onclick="window.changeMonth(1)" class="p-2 hover:bg-gray-100 text-gray-500 hover:text-indigo-600 border-l border-gray-100" title="Next Month">
-                <i class="bi bi-chevron-right"></i>
-            </button>
+            <div class="flex items-center bg-white rounded-lg shadow-sm border border-gray-200">
+                <button type="button" onclick="window.changeMonth(-1)" class="p-2 hover:bg-gray-100 text-gray-500 hover:text-indigo-600 rounded-l-lg transition border-r border-gray-100" title="Previous Month">
+                    <i class="bi bi-chevron-left"></i>
+                </button>
 
-            <button type="button"
-                    onclick="applyDashboardFilter(document.getElementById('monthFilter').value)"
-                    class="p-2 hover:bg-indigo-50 text-indigo-600 hover:text-indigo-700 rounded-r-lg transition border-l border-gray-100"
-                    title="Reload Data">
-                <i class="bi bi-arrow-clockwise"></i>
-            </button>
+                <div class="flex items-center px-2">
+                    <label for="monthFilter" class="sr-only">Period</label>
+                    <input type="month" id="monthFilter" value="{{ current_month }}"
+                           onchange="applyDashboardFilter(this.value, document.getElementById('searchInput').value)"
+                           class="border-transparent focus:border-transparent focus:ring-0 text-sm text-gray-700 py-1 bg-transparent h-8 w-32 text-center cursor-pointer"
+                           title="Select Month">
+
+                    {% if current_month %}
+                    <button onclick="applyDashboardFilter('', document.getElementById('searchInput').value)" class="ml-1 text-gray-400 hover:text-red-500" title="Clear Filter">
+                        <i class="bi bi-x-circle"></i>
+                    </button>
+                    {% endif %}
+                </div>
+
+                <button type="button" onclick="window.changeMonth(1)" class="p-2 hover:bg-gray-100 text-gray-500 hover:text-indigo-600 border-l border-gray-100" title="Next Month">
+                    <i class="bi bi-chevron-right"></i>
+                </button>
+
+                <button type="button"
+                        onclick="applyDashboardFilter(document.getElementById('monthFilter').value, document.getElementById('searchInput').value)"
+                        class="p-2 hover:bg-indigo-50 text-indigo-600 hover:text-indigo-700 rounded-r-lg transition border-l border-gray-100"
+                        title="Reload Data">
+                    <i class="bi bi-arrow-clockwise"></i>
+                </button>
+            </div>
         </div>
     </div>
 
-    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+    <div class="grid grid-cols-1 gap-6">
 
-        <div class="lg:col-span-2 bg-white rounded-lg shadow overflow-hidden flex flex-col h-[600px]">
+        <div class="bg-white rounded-lg shadow overflow-hidden flex flex-col h-[700px]">
             <div class="px-6 py-4 border-b border-gray-200 bg-gray-50 flex justify-between items-center">
                 <h3 class="text-lg font-bold text-gray-900 flex items-center">
                     <i class="bi bi-box-arrow-right text-gray-500 mr-2"></i>Outbound Queue
@@ -101,18 +128,28 @@
                                                 <th class="py-1">Country</th>
                                                 <th class="py-1 text-right">Total Order</th>
                                                 <th class="py-1 text-right">Allocated</th>
-                                                <th class="py-1 text-right">Action</th>
-                                            </tr>
+                                                <th class="py-1 text-right">Fill Rate</th> </tr>
                                         </thead>
                                         <tbody class="divide-y divide-gray-100">
                                             {% for item in group.items %}
                                             <tr class="hover:bg-gray-100">
                                                 <td class="py-2 font-mono text-gray-500">{{ item.period_date|date:"Y-m" }}</td>
 
-                                                <td class="py-2 font-medium">{{ item.product.sku }}</td>
+                                                <td class="py-2 font-medium">
+                                                    {% if current_query and current_query in item.product.sku|lower %}
+                                                        <span class="bg-yellow-200">{{ item.product.sku }}</span>
+                                                    {% else %}
+                                                        {{ item.product.sku }}
+                                                    {% endif %}
+                                                </td>
 
                                                 <td class="py-2">
-                                                    {{ item.country }}
+                                                    {% if current_query and current_query in item.country|lower %}
+                                                        <span class="bg-yellow-200">{{ item.country }}</span>
+                                                    {% else %}
+                                                        {{ item.country }}
+                                                    {% endif %}
+
                                                     {% if group.shipment and group.shipment.destination %}
                                                         {% if group.shipment.destination|lower != item.country|lower %}
                                                             <span class="text-red-500 font-bold ml-1" title="Mismatch!"><i class="bi bi-exclamation-triangle-fill"></i></span>
@@ -125,7 +162,18 @@
                                                 <td class="py-2 text-right font-bold text-blue-700">{{ item.allocated_qty|floatformat:0 }}</td>
 
                                                 <td class="py-2 text-right">
-                                                    </td>
+                                                    {% if item.quantity > 0 %}
+                                                        {% widthratio item.allocated_qty item.quantity 100 as rate %}
+                                                        <span class="font-bold text-xs
+                                                            {% if rate|add:'0' >= 100 %}text-green-600
+                                                            {% elif rate|add:'0' == 0 %}text-red-400
+                                                            {% else %}text-amber-500{% endif %}">
+                                                            {{ rate }}%
+                                                        </span>
+                                                    {% else %}
+                                                        <span class="text-gray-300">-</span>
+                                                    {% endif %}
+                                                </td>
                                             </tr>
                                             {% endfor %}
                                         </tbody>
@@ -139,7 +187,7 @@
                         <tr>
                             <td colspan="5" class="px-6 py-12 text-center text-gray-500">
                                 <i class="bi bi-inboxes text-4xl mb-3 block text-gray-300"></i>
-                                No pending allocations for {{ current_month }}.
+                                No pending allocations found.
                             </td>
                         </tr>
                     </tbody>
@@ -148,42 +196,7 @@
             </div>
         </div>
 
-        <div class="space-y-6">
-            <div class="bg-white rounded-lg shadow overflow-hidden">
-                <div class="px-6 py-4 border-b border-gray-200 bg-gray-50">
-                    <h3 class="text-lg font-bold text-gray-900">MRP Engine</h3>
-                </div>
-                <div class="p-6">
-                    <p class="text-sm text-gray-500 mb-4">Calculate net requirements based on forecast vs stock.</p>
-                    <button onclick="openMrpModal()" class="w-full flex justify-center items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 transition">
-                        <i class="bi bi-cpu mr-2"></i> Run MRP
-                    </button>
-                </div>
-            </div>
-
-            <div class="bg-white rounded-lg shadow overflow-hidden flex flex-col h-[300px]">
-                <div class="px-6 py-4 border-b border-gray-200 bg-gray-50 flex justify-between items-center">
-                    <h3 class="text-lg font-bold text-gray-900">Plan History</h3>
-                    <span class="text-xs bg-gray-200 text-gray-600 py-0.5 px-2 rounded-full">{{ total_plans }}</span>
-                </div>
-                <ul class="divide-y divide-gray-200 overflow-y-auto flex-1">
-                    {% for plan in plans %}
-                    <li class="px-6 py-4 hover:bg-gray-50 transition">
-                        <div class="flex items-center justify-between">
-                            <div class="flex flex-col">
-                                <span class="text-sm font-medium text-gray-900">{{ plan.name }}</span>
-                                <span class="text-xs text-gray-500">{{ plan.created_at|date:"M d, Y H:i" }}</span>
-                            </div>
-                            <a href="{% url 'forecast:plan_detail' plan.pk %}" class="text-indigo-600 hover:text-indigo-900 text-sm font-medium">View</a>
-                        </div>
-                    </li>
-                    {% empty %}
-                    <li class="px-6 py-4 text-center text-sm text-gray-500">No plans yet.</li>
-                    {% endfor %}
-                </ul>
-            </div>
         </div>
-    </div>
 </div>
 
 <div id="createShipmentModal" class="relative z-50 hidden" aria-labelledby="modal-title" role="dialog" aria-modal="true">
@@ -256,22 +269,50 @@
     </div>
 </div>
 
-{% include 'forecast/partials/run_mrp_modal.html' %}
 <script>
-    function applyDashboardFilter(monthStr) {
-        if(!monthStr) return;
-        document.cookie = "forecast_dashboard_month=" + monthStr + "; path=/; SameSite=Lax";
-        const url = `${window.location.pathname}?month=${monthStr}`;
+    function applyDashboardFilter(monthStr, queryStr) {
+        if (monthStr !== undefined) {
+             document.cookie = "forecast_dashboard_month=" + monthStr + "; path=/; SameSite=Lax";
+        } else {
+             monthStr = document.getElementById('monthFilter').value;
+        }
+
+        if (queryStr === undefined) {
+             queryStr = document.getElementById('searchInput').value;
+        }
+
+        let url = `${window.location.pathname}?q=${encodeURIComponent(queryStr)}`;
+        if (monthStr) {
+            url += `&month=${monthStr}`;
+        } else {
+            url += `&month=`;
+        }
+
         fetch(url, { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
         .then(response => response.text())
         .then(html => {
-            const container = document.getElementById('dashboard-content');
-            if (container) container.innerHTML = html;
+            const container = document.getElementById('dashboard-content-wrapper');
+            if (container) {
+                const tempDiv = document.createElement('div');
+                tempDiv.innerHTML = html;
+                const newContent = tempDiv.querySelector('#dashboard-content-wrapper') || tempDiv.firstChild;
+                container.parentNode.replaceChild(newContent, container);
+                const newInput = document.getElementById('searchInput');
+                if (newInput) {
+                    newInput.focus();
+                    const val = newInput.value;
+                    newInput.value = '';
+                    newInput.value = val;
+                }
+            }
         })
         .catch(err => console.error(err));
     }
 
-    // [NEW] Quick Month Navigation
+    window.doSearch = function(query) {
+        applyDashboardFilter(undefined, query);
+    }
+
     window.changeMonth = function(offset) {
         const input = document.getElementById('monthFilter');
         let currentVal = input.value;
@@ -285,7 +326,7 @@
         const newMonth = String(dateObj.getMonth() + 1).padStart(2, '0');
         const newVal = `${newYear}-${newMonth}`;
         input.value = newVal;
-        applyDashboardFilter(newVal);
+        applyDashboardFilter(newVal, undefined);
     }
 
     function toggleShipmentDetails(id) {
@@ -316,10 +357,7 @@
         modal.classList.remove('hidden');
     }
 
-    function openMrpModal() {
-        const modal = document.getElementById('runMrpModal');
-        if(modal) modal.classList.remove('hidden');
-    }
+    // Removed: openMrpModal function
 </script>
 <style>
     .rotate-90 { transform: rotate(90deg); }

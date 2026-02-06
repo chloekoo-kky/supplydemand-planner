@@ -124,7 +124,8 @@ def inventory_list(request, nature_code=None):
             output_field=DecimalField()
         ),
         projected_stock=Case(
-            When(nature='FG', then=F('qty_on_hand') + F('qty_fg_wip') + F('qty_fg_draft')),
+            # UPDATED LINE: Subtract qty_reserved for FG to account for allocated sales orders
+            When(nature='FG', then=F('qty_on_hand') - F('qty_reserved') + F('qty_fg_wip') + F('qty_fg_draft')),
             default=F('qty_on_hand') - F('qty_reserved') - F('qty_rm_draft'),
             output_field=DecimalField()
         )
@@ -172,39 +173,73 @@ def inventory_list(request, nature_code=None):
 
     # 2. 遍历产品进行计算 (MRP Logic)
     for p in products_list:
-        # --- A. 基础数据准备 ---
+        # --- A. Basic Data ---
         lead_time = p.lead_time_days
         lt_end_date = today + timedelta(days=lead_time)
-
         current_soh = float(p.qty_on_hand or 0)
 
-        demands = demand_map.get(p.id, [])
-        demands.sort(key=lambda x: x['date']) # 按日期排序需求
+        # [NEW] Calculated Metrics for Decision Making
+        daily_usage = float(p.estimated_daily_usage or 0)
+        p.lt_arrival_date = lt_end_date
+        p.calc_safety_target_qty = daily_usage * p.safety_stock_days
 
-        # --- B. 计算 LT Usage & Safety Stock (LT 结束时的预计库存) ---
-        # 这里的 Safety 不是指“安全库存警戒线”，而是“度过进货期后剩下多少”
+        demands = demand_map.get(p.id, [])
+        demands.sort(key=lambda x: x['date'])
+
+        # --- B. Calculate LT Usage & Projected Stock ---
         usage_in_lt = sum(d['qty'] for d in demands if d['date'] <= lt_end_date)
         p.calc_usage_in_lt = usage_in_lt
-        p.calc_projected_safety = current_soh - usage_in_lt # 这是 LT 结束那一天的预计余额
+        p.calc_projected_safety = current_soh - usage_in_lt
 
-        # --- C. 核心逻辑：寻找“断货点” (Run-out Date) ---
+        # [NEW] Days of Cover at Arrival (The critical decision metric)
+        # "When the boat arrives, how many days of stock will I have left?"
+        if daily_usage > 0:
+            p.calc_cover_at_lt_days = p.calc_projected_safety / daily_usage
+        else:
+            p.calc_cover_at_lt_days = 999 if p.calc_projected_safety > 0 else 0
+
+        # --- C. Run-out Date Logic (Keep existing logic) ---
         runout_date = None
-        shortage_qty = 0
-
-        # 模拟未来的每一笔扣减
         temp_balance = current_soh
         for d in demands:
             temp_balance -= d['qty']
-            # 如果余额 < 0 (或者你可以设为 < p.min_stock 增加安全缓冲)
             if temp_balance < 0:
                 runout_date = d['date']
-                shortage_qty = abs(temp_balance)
-                break # 找到第一个断货点即可停止
+                break
 
-        # --- D. 生成行动建议 (Action Plan) ---
-        p.mrp_status = "OK" # Default
+        # --- D. Action Plan (Keep existing logic) ---
+        p.mrp_status = "OK"
         p.mrp_action_msg = "No Action Needed"
         p.mrp_color = "bg-emerald-50 text-emerald-700 border-emerald-200"
+
+        if runout_date:
+            must_order_by = runout_date - timedelta(days=lead_time)
+            days_until_order = (must_order_by - today).days
+            p.mrp_runout_date = runout_date
+
+            if days_until_order < 0:
+                p.mrp_status = "URGENT"
+                p.mrp_action_msg = f"OVERDUE! Order immediately ({abs(days_until_order)} days late)"
+                p.mrp_color = "bg-red-100 text-red-800 border-red-300 animate-pulse"
+            elif days_until_order == 0:
+                p.mrp_status = "NOW"
+                p.mrp_action_msg = "Order Today"
+                p.mrp_color = "bg-red-50 text-red-700 border-red-200"
+            elif days_until_order <= 7:
+                p.mrp_status = "SOON"
+                p.mrp_action_msg = f"Order in {days_until_order} days"
+                p.mrp_color = "bg-orange-50 text-orange-700 border-orange-200"
+            else:
+                p.mrp_status = "PLAN"
+                p.mrp_action_msg = f"Order by {must_order_by.strftime('%d/%m')}"
+                p.mrp_color = "bg-blue-50 text-blue-700 border-blue-200"
+        else:
+             # Fallback to coverage based logic
+             if p.calc_cover_at_lt_days < p.safety_stock_days:
+                 # If we land below safety stock target after lead time, warn user
+                 p.mrp_status = "LOW"
+                 p.mrp_action_msg = "Below Safety Target"
+                 p.mrp_color = "bg-amber-50 text-amber-700 border-amber-200"
 
         if runout_date:
             # 倒推法：下单日 = 断货日 - Lead Time
@@ -287,6 +322,81 @@ def inventory_list(request, nature_code=None):
 
     return render(request, 'inventory/inventory_list.html', context)
 
+def product_demand_analysis(request, pk):
+    """
+    Returns detailed demand analysis for a specific product:
+    1. Orders consuming stock during Lead Time.
+    2. Orders that will exhaust the current balance (Run-out analysis).
+    """
+    product = get_object_or_404(Product, pk=pk)
+
+    # 1. Get Current Stock
+    last_snapshot = InventorySnapshot.objects.filter(product=product).order_by('-snapshot_date').first()
+    current_soh = float(last_snapshot.quantity_on_hand) if last_snapshot else 0.0
+
+    # 2. Get Lead Time Date
+    lead_time = product.lead_time_days
+    today = timezone.now().date()
+    lt_end_date = today + timedelta(days=lead_time)
+
+    # 3. Fetch All Active Demands (Sorted by Date)
+    # Note: We look for active Production Orders (Draft, Confirmed, In Progress)
+    active_components = ProductionComponent.objects.filter(
+        component=product,
+        production_order__status__in=['DRAFT', 'CONFIRMED', 'IN_PROGRESS']
+    ).select_related('production_order').order_by('production_order__start_date')
+
+    lt_usage_list = []
+    run_out_list = []
+
+    # Logic: Usage in LT
+    for item in active_components:
+        ord_date = item.production_order.start_date
+        qty = float(item.quantity_required)
+
+        if ord_date <= lt_end_date:
+            lt_usage_list.append({
+                'order_ref': item.production_order.order_number,
+                'date': ord_date.strftime('%Y-%m-%d'),
+                'qty': qty,
+                'status': item.production_order.status
+            })
+
+    # Logic: Run-out Analysis
+    # We simulate stock depletion starting from NOW
+    running_balance = current_soh
+
+    for item in active_components:
+        if running_balance <= 0:
+            # If we are already out of stock, we stop listing (or list the first one that is missed)
+            # User request: "orders that will finished the balance" -> Stop when balance is gone.
+            break
+
+        ord_date = item.production_order.start_date
+        qty = float(item.quantity_required)
+
+        new_balance = running_balance - qty
+
+        run_out_list.append({
+            'order_ref': item.production_order.order_number,
+            'date': ord_date.strftime('%Y-%m-%d'),
+            'qty': qty,
+            'balance_after': max(0, new_balance), # Show 0 if it goes negative
+            'is_breaker': (new_balance < 0) # Flag if this is the order that causes shortage
+        })
+
+        running_balance = new_balance
+
+    return JsonResponse({
+        'status': 'ok',
+        'sku': product.sku,
+        'description': product.description,
+        'lead_time': lead_time,
+        'eta': lt_end_date.strftime('%Y-%m-%d'),
+        'current_stock': current_soh,
+        'lt_data': lt_usage_list,
+        'run_out_data': run_out_list
+    })
 
 @csrf_exempt
 def group_create(request):

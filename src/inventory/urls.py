@@ -17,6 +17,7 @@ urlpatterns = [
     path('api/product/move/<int:product_id>/', views.product_move, name='product_move'),
     path('api/product/delete/<int:product_id>/', views.product_delete, name='product_delete'),
     path('api/product/reorder/', views.product_reorder, name='product_reorder'),
+    path('api/demand-analysis/<int:pk>/', views.product_demand_analysis, name='product_demand_analysis'),
 
     # Import 保持不变
     path('import/load/', views.load_import_modal, name='import_load'),

@@ -63,14 +63,6 @@
                 Forecast
             </p>
 
-            <a href="{% url 'forecast:dashboard' %}"
-               class="ajax-link flex items-center px-4 py-2 text-sm rounded-lg transition-colors
-               {% if request.resolver_match.url_name == 'dashboard' and request.resolver_match.app_name == 'forecast' %}bg-blue-600 text-white{% else %}text-slate-400 hover:bg-slate-800 hover:text-white{% endif %}">
-                <svg class="w-4 h-4 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path>
-                </svg>
-                Forecast Dashboard
-            </a>
 
             <a href="{% url 'forecast:sales_forecast' %}"
                class="ajax-link flex items-center px-4 py-2 text-sm rounded-lg transition-colors
@@ -80,6 +72,25 @@
                 </svg>
                 Sales Forecast
             </a>
+
+            <a href="{% url 'forecast:planning_dashboard' %}"
+               class="ajax-link flex items-center px-4 py-2 text-sm rounded-lg transition-colors
+               {% if request.resolver_match.url_name == 'planning_dashboard' %}bg-blue-600 text-white{% else %}text-slate-400 hover:bg-slate-800 hover:text-white{% endif %}">
+                <svg class="w-4 h-4 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M3 14h18m-9-4v8m-7 0h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"></path>
+                </svg>
+                Planning & MRP
+            </a>
+
+            <a href="{% url 'forecast:dashboard' %}"
+               class="ajax-link flex items-center px-4 py-2 text-sm rounded-lg transition-colors
+               {% if request.resolver_match.url_name == 'dashboard' and request.resolver_match.app_name == 'forecast' %}bg-blue-600 text-white{% else %}text-slate-400 hover:bg-slate-800 hover:text-white{% endif %}">
+                <svg class="w-4 h-4 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path>
+                </svg>
+                Fulfillment
+            </a>
+
         </div>
     </nav>
 
@@ -102,5 +113,13 @@
                 </p>
             </div>
         </a>
-    </div>
+        </div>
+            <div class="mt-auto p-3">
+            <form action="{% url 'core:reset_demo_data' %}" method="POST" onsubmit="return confirm('Reset all data to default demo state?');">
+                {% csrf_token %}
+                <button type="submit" class="btn btn-outline-danger w-100 btn-sm">
+                    <i class="bi bi-arrow-counterclockwise"></i> Reset Demo Data
+                </button>
+            </form>
+        </div>
 </aside>

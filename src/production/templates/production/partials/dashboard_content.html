@@ -51,273 +51,331 @@
         background-color: #eff6ff;
         color: #1d4ed8;
     }
+
+    /* 排序图标样式 */
+    .sort-icon {
+        display: inline-block;
+        width: 0.75rem;
+        height: 0.75rem;
+        margin-left: 0.25rem;
+        opacity: 0.3;
+        transition: opacity 0.2s;
+    }
+    .sort-active {
+        opacity: 1;
+        color: #4f46e5; /* Indigo-600 */
+    }
+    .th-sortable {
+        cursor: pointer;
+        user-select: none;
+        transition: background-color 0.15s;
+    }
+    .th-sortable:hover {
+        background-color: #f1f5f9; /* Slate-100 */
+    }
 </style>
 
 <div class="mb-6 flex flex-col xl:flex-row justify-between items-start xl:items-center gap-4">
     <div class="flex items-center gap-3">
         <h2 class="text-xl font-bold text-slate-800">Production Orders</h2>
         <span class="px-2.5 py-0.5 rounded-full bg-blue-50 text-blue-700 text-xs font-semibold border border-blue-100">
-            {{ orders|length }} Orders
+            {{ total_orders }} Orders
         </span>
     </div>
 
-    <div class="flex flex-col md:flex-row gap-3 w-full xl:w-auto">
-        <form id="prodFilterForm" class="flex flex-wrap gap-2 items-center bg-white p-1.5 rounded-lg border border-slate-200 shadow-sm" onsubmit="event.preventDefault(); window.applyFilters();">
-            <div class="relative">
-                <span class="absolute inset-y-0 left-0 flex items-center pl-2 text-slate-400">
-                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
-                </span>
-                <input type="text" id="filter_search" placeholder="Search PO, SKU..."
-                       value="{{ current_search }}"
-                       class="pl-8 pr-3 py-1.5 text-sm border-slate-300 rounded-md focus:ring-indigo-500 focus:border-indigo-500 w-36 md:w-48">
+    <input type="hidden" id="filter_sort" value="{{ current_sort }}">
+    <input type="hidden" id="filter_direction" value="{{ current_direction }}">
+    <input type="hidden" id="filter_page" value="{{ orders.number }}">
+
+    <div class="flex flex-col md:flex-row gap-3 w-full xl:w-auto items-end md:items-center">
+
+        <div class="relative">
+            <input type="text"
+                   id="searchInput"
+                   value="{{ current_search }}"
+                   placeholder="Search PO, SKU..."
+                   class="w-64 pl-10 pr-4 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 text-sm"
+                   onkeydown="if(event.key === 'Enter') window.resetPageAndApply()">
+            <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                <i class="bi bi-search text-gray-400"></i>
+            </div>
+            {% if current_search %}
+            <button onclick="document.getElementById('searchInput').value=''; window.resetPageAndApply()" class="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-600">
+                <i class="bi bi-x-circle-fill"></i>
+            </button>
+            {% endif %}
+        </div>
+
+        <div class="flex items-center bg-white rounded-lg shadow-sm border border-gray-200">
+            <button type="button" onclick="window.changeMonth(-1)" class="p-2 hover:bg-gray-100 text-gray-500 hover:text-indigo-600 rounded-l-lg transition border-r border-gray-100" title="Previous Month">
+                <i class="bi bi-chevron-left"></i>
+            </button>
+
+            <div class="flex items-center px-2">
+                <label for="monthFilter" class="sr-only">Period</label>
+                <input type="month" id="monthFilter"
+                       value="{% if current_date_from %}{{ current_date_from|slice:':7' }}{% endif %}"
+                       onchange="window.resetPageAndApply()"
+                       class="border-transparent focus:border-transparent focus:ring-0 text-sm text-gray-700 py-1 bg-transparent h-8 w-32 text-center cursor-pointer"
+                       title="Select Month">
+
+                <button onclick="document.getElementById('monthFilter').value=''; window.resetPageAndApply()" class="ml-1 text-gray-400 hover:text-red-500" title="Clear Filter">
+                    <i class="bi bi-x-circle"></i>
+                </button>
             </div>
 
-            <input type="date" id="filter_date_from" value="{{ current_date_from }}" class="py-1.5 px-2 text-sm border-slate-300 rounded-md focus:ring-indigo-500 focus:border-indigo-500 text-slate-600" title="Start Date">
-            <span class="text-slate-400 text-xs">-</span>
-            <input type="date" id="filter_date_to" value="{{ current_date_to }}" class="py-1.5 px-2 text-sm border-slate-300 rounded-md focus:ring-indigo-500 focus:border-indigo-500 text-slate-600" title="End Date">
-
-            <button type="submit" class="bg-slate-100 hover:bg-slate-200 text-slate-600 px-3 py-1.5 rounded-md text-sm font-medium transition-colors">
-                Filter
+            <button type="button" onclick="window.changeMonth(1)" class="p-2 hover:bg-gray-100 text-gray-500 hover:text-indigo-600 border-l border-gray-100" title="Next Month">
+                <i class="bi bi-chevron-right"></i>
             </button>
-             <button type="button" onclick="window.resetFilters()" class="text-slate-400 hover:text-red-500 px-2 text-sm" title="Clear Filters">
-                ✕
-            </button>
-        </form>
 
-        <div class="flex gap-2">
+            <button type="button"
+                    onclick="window.applyFilters()"
+                    class="p-2 hover:bg-indigo-50 text-indigo-600 hover:text-indigo-700 rounded-r-lg transition border-l border-gray-100"
+                    title="Reload Data">
+                <i class="bi bi-arrow-clockwise"></i>
+            </button>
+        </div>
+
+        <div class="flex gap-2 ml-2">
             <button onclick="window.openEstimatorModal()"
                     class="bg-white text-indigo-600 border border-indigo-600 hover:bg-indigo-50 px-4 py-2 rounded-lg text-sm font-medium shadow-sm transition flex items-center whitespace-nowrap">
-                <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z"></path></svg>
+                <i class="bi bi-calculator mr-2"></i>
                 Estimator
             </button>
 
             <button onclick="document.getElementById('createModal').classList.remove('hidden')"
                     class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg text-sm font-medium shadow-sm transition flex items-center whitespace-nowrap">
-                <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
+                <i class="bi bi-plus-lg mr-2"></i>
                 New Order
             </button>
         </div>
     </div>
 </div>
 
-<div class="bg-white rounded-lg shadow border border-slate-200 overflow-hidden">
-    <table class="w-full text-left border-collapse">
-        <thead class="bg-slate-50 border-b border-slate-200">
-            <tr>
-                <th class="px-6 py-3 text-xs font-semibold text-slate-500 uppercase w-12"></th>
-                <th class="px-6 py-3 text-xs font-semibold text-slate-500 uppercase">Order Details</th>
-                <th class="px-6 py-3 text-xs font-semibold text-slate-500 uppercase text-center">Status</th>
-                <th class="px-6 py-3 text-xs font-semibold text-slate-500 uppercase text-left">Qty</th>
-                <th class="px-6 py-3 text-xs font-semibold text-slate-500 uppercase text-right">Date</th>
-                <th class="px-6 py-3 text-xs font-semibold text-slate-500 uppercase text-center">Materials</th>
-                <th class="px-6 py-3 text-xs font-semibold text-slate-500 uppercase text-right">Action</th>
-            </tr>
-        </thead>
-        <tbody class="divide-y divide-slate-100">
-            {% for order in orders %}
-            <tr class="hover:bg-slate-50 transition-colors group cursor-pointer"
-                onclick="toggleRow('row-{{ order.id }}', 'icon-{{ order.id }}')">
+<div class="bg-white rounded-lg shadow border border-slate-200 overflow-hidden flex flex-col min-h-[500px]">
+    <div class="flex-1 overflow-auto">
+        <table class="w-full text-left border-collapse">
+            <thead class="bg-slate-50 border-b border-slate-200 sticky top-0 z-10">
+                <tr>
+                    <th class="px-6 py-3 text-xs font-semibold text-slate-500 uppercase w-12"></th>
 
-                <td class="px-6 py-4 text-slate-400">
-                    <svg id="icon-{{ order.id }}" class="rotate-icon w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path>
-                    </svg>
-                </td>
+                    <th class="px-6 py-3 text-xs font-semibold text-slate-500 uppercase th-sortable group"
+                        onclick="window.changeSort('order_number')">
+                        Order Details
+                        <span class="sort-icon {% if current_sort == 'order_number' %}sort-active{% endif %}">
+                            {% if current_sort == 'order_number' and current_direction == 'desc' %}▼{% else %}▲{% endif %}
+                        </span>
+                    </th>
 
-                <td class="px-6 py-4">
-                    <div class="flex items-center">
-                        <div>
-                            <div class="font-bold text-slate-900 text-sm">{{ order.order_number }}</div>
-                            <div class="text-xs font-semibold text-slate-700">{{ order.product.sku }}</div>
-                            <div class="text-[10px] text-slate-400 truncate max-w-[180px] leading-tight" title="{{ order.product.description }}">
-                                {{ order.product.description }}
-                            </div>
-                        </div>
-                    </div>
-                </td>
+                    <th class="px-6 py-3 text-xs font-semibold text-slate-500 uppercase text-center th-sortable group"
+                        onclick="window.changeSort('status')">
+                        Status
+                        <span class="sort-icon {% if current_sort == 'status' %}sort-active{% endif %}">
+                            {% if current_sort == 'status' and current_direction == 'desc' %}▼{% else %}▲{% endif %}
+                        </span>
+                    </th>
 
-                <td class="px-6 py-4 text-center">
-                    <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border
-                        {% if order.status == 'DRAFT' %} bg-gray-100 text-gray-700 border-gray-200
-                        {% elif order.status == 'CONFIRMED' %} bg-blue-50 text-blue-700 border-blue-200
-                        {% elif order.status == 'IN_PROGRESS' %} bg-orange-100 text-orange-800 border-orange-200
-                        {% elif order.status == 'COMPLETED' %} bg-emerald-50 text-emerald-700 border-emerald-200
-                        {% else %} bg-red-50 text-red-700 border-red-200 {% endif %}">
-                        {{ order.get_status_display }}
-                    </span>
-                </td>
+                    <th class="px-6 py-3 text-xs font-semibold text-slate-500 uppercase text-left th-sortable group"
+                        onclick="window.changeSort('quantity')">
+                        Qty
+                        <span class="sort-icon {% if current_sort == 'quantity' %}sort-active{% endif %}">
+                            {% if current_sort == 'quantity' and current_direction == 'desc' %}▼{% else %}▲{% endif %}
+                        </span>
+                    </th>
 
-                <td class="px-6 py-4 text-right font-mono text-sm font-medium text-slate-700 group/qty">
-                    <div class="flex items-center justify-start gap-2">
-                        <span>{{ order.quantity|floatformat:0 }}</span>
+                    <th class="px-6 py-3 text-xs font-semibold text-slate-500 uppercase text-right th-sortable group"
+                        onclick="window.changeSort('start_date')">
+                        Date
+                        <span class="sort-icon {% if current_sort == 'start_date' %}sort-active{% endif %}">
+                            {% if current_sort == 'start_date' and current_direction == 'desc' %}▼{% else %}▲{% endif %}
+                        </span>
+                    </th>
 
-                        {% if order.status == 'DRAFT' %}
-                        <button type="button"
-                                onclick="event.stopPropagation(); openEditQuantityModal('{{ order.id }}', '{{ order.quantity }}', '{{ order.order_number }}')"
-                                class="text-slate-400 hover:text-blue-600 transition-colors p-1"
-                                title="Edit Quantity">
-                            <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path></svg>
-                        </button>
-                        {% endif %}
-                    </div>
-                </td>
+                    <th class="px-6 py-3 text-xs font-semibold text-slate-500 uppercase text-center">Materials</th>
+                    <th class="px-6 py-3 text-xs font-semibold text-slate-500 uppercase text-right">Action</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-slate-100">
+                {% for order in orders %}
+                <tr class="hover:bg-slate-50 transition-colors group cursor-pointer"
+                    onclick="toggleRow('row-{{ order.id }}', 'icon-{{ order.id }}')">
 
-                <td class="px-6 py-4 text-right text-sm text-slate-500">
-                    {{ order.start_date|date:"M d" }}
-                </td>
+                    <td class="px-6 py-4 text-slate-400">
+                        <svg id="icon-{{ order.id }}" class="rotate-icon w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path>
+                        </svg>
+                    </td>
 
-                <td class="px-6 py-4">
-                    <div class="flex justify-center gap-1">
-                        {% for comp in order.components.all|slice:":5" %}
-                            <div class="w-2.5 h-2.5 rounded-full
-                                {% if comp.is_enough %} bg-emerald-400 {% else %} bg-red-500 animate-pulse {% endif %}"
-                                title="{{ comp.component.sku }}: {% if comp.is_enough %}OK{% else %}Shortage{% endif %}">
-                            </div>
-                        {% endfor %}
-                        {% if order.components.count > 5 %}
-                            <span class="text-[10px] text-gray-400 leading-3">+</span>
-                        {% endif %}
-                    </div>
-                </td>
-
-                <td class="px-6 py-4 text-right">
-                    <div class="flex justify-end gap-2">
-                        <button type="button"
-                                onclick="event.stopPropagation(); window.openProjectedModal('{{ order.id }}')"
-                                class="text-slate-400 hover:text-indigo-600 p-1 transition-colors"
-                                title="Projected Allocation Analysis">
-                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"></path></svg>
-                        </button>
-
-                        <button type="button"
-                                onclick="event.stopPropagation(); window.openEditStatusModal('{{ order.id }}', '{{ order.status }}', '{{ order.order_number }}')"
-                                class="text-slate-400 hover:text-blue-600 p-1 transition-colors"
-                                title="Change Status">
-                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path></svg>
-                        </button>
-                    </div>
-                </td>
-            </tr>
-
-            <tr>
-                <td colspan="7" class="p-0 border-none">
-                    <div id="row-{{ order.id }}" class="expand-content bg-slate-50 border-b border-slate-100 shadow-inner">
-                        <div class="px-10 py-6">
-                            <h4 class="text-xs font-bold text-slate-500 uppercase tracking-wider mb-4 flex items-center">
-                                <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path></svg>
-                                Bill of Materials & Availability Check
-                            </h4>
-
-                            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                                {% for comp in order.components.all %}
-                                <div class="comp-card bg-white rounded-lg p-3 relative overflow-hidden group">
-                                    <div class="absolute left-0 top-0 bottom-0 w-1.5
-                                        {% if comp.is_enough %} bg-emerald-500 {% else %} bg-red-500 {% endif %}">
-                                    </div>
-
-                                    <div class="pl-3">
-                                        <div class="flex justify-between items-start">
-                                            <div class="flex-1 min-w-0">
-                                                <div class="text-sm font-bold text-slate-700 truncate" title="{{ comp.component.sku }}">
-                                                    {{ comp.component.sku }}
-                                                </div>
-                                                <div class="text-[10px] text-slate-400 truncate">{{ comp.component.description }}</div>
-                                            </div>
-
-                                            {% if not comp.is_enough %}
-                                            <span class="ml-2 inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-red-100 text-red-700">
-                                                Short
-                                            </span>
-                                            {% endif %}
-                                        </div>
-
-                                        <div class="mt-3 flex items-end justify-between border-t border-slate-100 pt-2">
-                                            <div>
-                                                <span class="block text-[10px] text-slate-400 uppercase">Required</span>
-                                                <span class="block text-sm font-semibold text-slate-800">{{ comp.quantity_required|floatformat:1 }}</span>
-                                            </div>
-                                            <div class="text-right">
-                                                <span class="block text-[10px] text-slate-400 uppercase">Available</span>
-                                                <span class="block text-sm font-bold {% if comp.is_enough %}text-emerald-600{% else %}text-red-600{% endif %}">
-                                                    {{ comp.display_stock|floatformat:1 }}
-                                                </span>
-                                            </div>
-                                        </div>
-                                    </div>
+                    <td class="px-6 py-4">
+                        <div class="flex items-center">
+                            <div>
+                                <div class="font-bold text-slate-900 text-sm">{{ order.order_number }}</div>
+                                <div class="text-xs font-semibold text-slate-700">{{ order.product.sku }}</div>
+                                <div class="text-[10px] text-slate-400 truncate max-w-[180px] leading-tight" title="{{ order.product.description }}">
+                                    {{ order.product.description }}
                                 </div>
-                                {% empty %}
-                                <div class="col-span-4 text-center py-4 text-sm text-slate-400 italic">No components found in BOM.</div>
-                                {% endfor %}
                             </div>
                         </div>
-                    </div>
-                </td>
-            </tr>
-            {% empty %}
-            <tr>
-                <td colspan="7" class="px-6 py-12 text-center text-slate-400">
-                    <p>No production orders found.</p>
-                </td>
-            </tr>
-            {% endfor %}
-        </tbody>
-    </table>
-</div>
+                    </td>
 
-<div id="projectedAllocationModal" class="relative z-50 hidden">
-    <div class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm"></div>
-    <div class="fixed inset-0 z-10 w-screen overflow-y-auto"
-         onmousedown="this.dataset.readyToClose = 'true'"
-         onclick="if(this.dataset.readyToClose === 'true') { document.getElementById('projectedAllocationModal').classList.add('hidden'); } this.dataset.readyToClose = 'false'">
-        <div class="flex min-h-full items-center justify-center p-4">
-            <div class="relative transform overflow-hidden rounded-lg bg-white text-left shadow-xl transition-all sm:w-full sm:max-w-2xl"
-                 onmousedown="event.stopPropagation()"
-                 onclick="event.stopPropagation()">
+                    <td class="px-6 py-4 text-center">
+                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border
+                            {% if order.status == 'DRAFT' %} bg-gray-100 text-gray-700 border-gray-200
+                            {% elif order.status == 'CONFIRMED' %} bg-blue-50 text-blue-700 border-blue-200
+                            {% elif order.status == 'IN_PROGRESS' %} bg-orange-100 text-orange-800 border-orange-200
+                            {% elif order.status == 'COMPLETED' %} bg-emerald-50 text-emerald-700 border-emerald-200
+                            {% else %} bg-red-50 text-red-700 border-red-200 {% endif %}">
+                            {{ order.get_status_display }}
+                        </span>
+                    </td>
 
-                <div class="bg-indigo-50 px-6 py-4 border-b border-indigo-100 flex justify-between items-center">
-                    <div>
-                        <h3 class="text-lg font-bold text-indigo-900">Projected Allocation</h3>
-                        <p class="text-xs text-indigo-600">Simulate fulfillment for PO: <span id="proj_po_number" class="font-mono font-bold"></span></p>
-                    </div>
-                    <button onclick="document.getElementById('projectedAllocationModal').classList.add('hidden')" class="text-indigo-400 hover:text-indigo-600">✕</button>
-                </div>
+                    <td class="px-6 py-4 text-right font-mono text-sm font-medium text-slate-700 group/qty">
+                        <div class="flex items-center justify-start gap-2">
+                            <span>{{ order.quantity|floatformat:0 }}</span>
 
-                <div class="p-6">
-                    <div class="flex justify-between items-center mb-6 bg-white border border-slate-200 rounded-lg p-4 shadow-sm">
-                        <div class="text-center">
-                            <div class="text-xs text-slate-500 uppercase font-bold">Production Qty</div>
-                            <div class="text-xl font-bold text-slate-800" id="proj_po_qty">0</div>
+                            {% if order.status == 'DRAFT' %}
+                            <button type="button"
+                                    onclick="event.stopPropagation(); openEditQuantityModal('{{ order.id }}', '{{ order.quantity|floatformat:0 }}', '{{ order.order_number }}', '{{ order.product.description|escapejs }}')"
+                                    class="text-slate-400 hover:text-blue-600 transition-colors p-1"
+                                    title="Edit Quantity">
+                                <i class="bi bi-pencil text-xs"></i>
+                            </button>
+                            {% endif %}
                         </div>
-                        <div class="text-3xl text-slate-300">→</div>
-                        <div class="text-center">
-                            <div class="text-xs text-slate-500 uppercase font-bold">Remaining (Free)</div>
-                            <div class="text-xl font-bold text-emerald-600" id="proj_remaining">0</div>
+                    </td>
+
+                    <td class="px-6 py-4 text-right text-sm text-slate-500">
+                        {{ order.start_date|date:"M d" }}
+                    </td>
+
+                    <td class="px-6 py-4">
+                        <div class="flex justify-center gap-1">
+                            {% for comp in order.components.all|slice:":5" %}
+                                <div class="w-2.5 h-2.5 rounded-full
+                                    {% if comp.is_enough %} bg-emerald-400 {% else %} bg-red-500 animate-pulse {% endif %}"
+                                    title="{{ comp.component.sku }}: {% if comp.is_enough %}OK{% else %}Shortage{% endif %}">
+                                </div>
+                            {% endfor %}
+                            {% if order.components.count > 5 %}
+                                <span class="text-[10px] text-gray-400 leading-3">+</span>
+                            {% endif %}
                         </div>
-                    </div>
+                    </td>
 
-                    <div class="overflow-y-auto max-h-[300px] border rounded-lg border-slate-200">
-                        <table class="min-w-full divide-y divide-slate-200">
-                            <thead class="bg-slate-50 sticky top-0">
-                                <tr>
-                                    <th class="px-4 py-2 text-left text-xs font-medium text-slate-500 uppercase">Customer</th>
-                                    <th class="px-4 py-2 text-left text-xs font-medium text-slate-500 uppercase">Demand Date</th>
-                                    <th class="px-4 py-2 text-right text-xs font-medium text-slate-500 uppercase">Gap</th>
-                                    <th class="px-4 py-2 text-right text-xs font-medium text-slate-500 uppercase">Allocated</th>
-                                    <th class="px-4 py-2 text-center text-xs font-medium text-slate-500 uppercase">Status</th>
-                                </tr>
-                            </thead>
-                            <tbody id="proj_table_body" class="divide-y divide-slate-100 bg-white text-sm">
-                                </tbody>
-                        </table>
-                    </div>
+                    <td class="px-6 py-4 text-right">
+                        <div class="flex justify-end gap-2">
+                            <button type="button"
+                                    onclick="event.stopPropagation(); window.openEditStatusModal('{{ order.id }}', '{{ order.status }}', '{{ order.order_number }}', '{{ order.product.description|escapejs }}')"
+                                    class="text-slate-400 hover:text-blue-600 p-1 transition-colors"
+                                    title="Change Status">
+                                <i class="bi bi-arrow-repeat"></i>
+                            </button>
+                        </div>
+                    </td>
+                </tr>
 
-                    <p class="text-xs text-slate-400 mt-4 italic text-center">
-                        * Allocation logic follows FIFO (First-In, First-Out) based on sales order dates after the production date.
-                    </p>
-                </div>
+                <tr>
+                    <td colspan="7" class="p-0 border-none">
+                        <div id="row-{{ order.id }}" class="expand-content bg-slate-50 border-b border-slate-100 shadow-inner">
+                            <div class="px-10 py-6">
+                                <h4 class="text-xs font-bold text-slate-500 uppercase tracking-wider mb-4 flex items-center">
+                                    <i class="bi bi-list-check mr-2"></i>
+                                    Bill of Materials & Availability Check
+                                </h4>
+
+                                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                                    {% for comp in order.components.all %}
+                                    <div class="comp-card bg-white rounded-lg p-3 relative overflow-hidden group">
+                                        <div class="absolute left-0 top-0 bottom-0 w-1.5
+                                            {% if comp.is_enough %} bg-emerald-500 {% else %} bg-red-500 {% endif %}">
+                                        </div>
+
+                                        <div class="pl-3">
+                                            <div class="flex justify-between items-start">
+                                                <div class="flex-1 min-w-0">
+                                                    <div class="text-sm font-bold text-slate-700 truncate" title="{{ comp.component.sku }}">
+                                                        {{ comp.component.sku }}
+                                                    </div>
+                                                    <div class="text-[10px] text-slate-400 truncate">{{ comp.component.description }}</div>
+                                                </div>
+
+                                                {% if not comp.is_enough %}
+                                                <span class="ml-2 inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-red-100 text-red-700">
+                                                    Short
+                                                </span>
+                                                {% endif %}
+                                            </div>
+
+                                            <div class="mt-3 flex items-end justify-between border-t border-slate-100 pt-2">
+                                                <div>
+                                                    <span class="block text-[10px] text-slate-400 uppercase">Required</span>
+                                                    <span class="block text-sm font-semibold text-slate-800">{{ comp.quantity_required|floatformat:1 }}</span>
+                                                </div>
+                                                <div class="text-right">
+                                                    <span class="block text-[10px] text-slate-400 uppercase">Available</span>
+                                                    <span class="block text-sm font-bold {% if comp.is_enough %}text-emerald-600{% else %}text-red-600{% endif %}">
+                                                        {{ comp.display_stock|floatformat:1 }}
+                                                    </span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    {% empty %}
+                                    <div class="col-span-4 text-center py-4 text-sm text-slate-400 italic">No components found in BOM.</div>
+                                    {% endfor %}
+                                </div>
+                            </div>
+                        </div>
+                    </td>
+                </tr>
+                {% empty %}
+                <tr>
+                    <td colspan="7" class="px-6 py-12 text-center text-slate-400">
+                        <i class="bi bi-inbox text-4xl mb-3 block opacity-50"></i>
+                        <p>No production orders found.</p>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    {% if orders.has_other_pages %}
+    <div class="bg-white px-4 py-3 flex items-center justify-between border-t border-slate-200 sm:px-6">
+        <div class="hidden sm:flex-1 sm:flex sm:items-center sm:justify-between">
+            <div>
+                <p class="text-sm text-slate-700">
+                    Showing <span class="font-medium">{{ orders.start_index }}</span> to <span class="font-medium">{{ orders.end_index }}</span> of <span class="font-medium">{{ paginator.count }}</span> results
+                </p>
+            </div>
+            <div>
+                <nav class="isolate inline-flex -space-x-px rounded-md shadow-sm" aria-label="Pagination">
+                    <button type="button"
+                            {% if orders.has_previous %}onclick="window.changePage({{ orders.previous_page_number }})"{% else %}disabled{% endif %}
+                            class="relative inline-flex items-center rounded-l-md px-2 py-2 text-gray-400 ring-1 ring-inset ring-gray-300 hover:bg-gray-50 focus:z-20 focus:outline-offset-0 disabled:opacity-50 disabled:cursor-not-allowed">
+                        <span class="sr-only">Previous</span>
+                        <svg class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M12.79 5.23a.75.75 0 01-.02 1.06L8.832 10l3.938 3.71a.75.75 0 11-1.04 1.08l-4.5-4.25a.75.75 0 010-1.08l4.5-4.25a.75.75 0 011.06.02z" clip-rule="evenodd" /></svg>
+                    </button>
+
+                    {% for i in paginator.page_range %}
+                        {% if orders.number == i %}
+                            <span class="relative z-10 inline-flex items-center bg-indigo-600 px-4 py-2 text-sm font-semibold text-white focus:z-20 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600">{{ i }}</span>
+                        {% elif i > orders.number|add:'-3' and i < orders.number|add:'3' %}
+                             <button type="button" onclick="window.changePage({{ i }})" class="relative inline-flex items-center px-4 py-2 text-sm font-semibold text-gray-900 ring-1 ring-inset ring-gray-300 hover:bg-gray-50 focus:z-20 focus:outline-offset-0">{{ i }}</button>
+                        {% endif %}
+                    {% endfor %}
+
+                    <button type="button"
+                            {% if orders.has_next %}onclick="window.changePage({{ orders.next_page_number }})"{% else %}disabled{% endif %}
+                            class="relative inline-flex items-center rounded-r-md px-2 py-2 text-gray-400 ring-1 ring-inset ring-gray-300 hover:bg-gray-50 focus:z-20 focus:outline-offset-0 disabled:opacity-50 disabled:cursor-not-allowed">
+                        <span class="sr-only">Next</span>
+                        <svg class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M7.21 14.77a.75.75 0 01.02-1.06L11.168 10 7.23 6.29a.75.75 0 111.04-1.08l4.5 4.25a.75.75 0 010 1.08l-4.5 4.25a.75.75 0 01-1.06-.02z" clip-rule="evenodd" /></svg>
+                    </button>
+                </nav>
             </div>
         </div>
     </div>
+    {% endif %}
 </div>
 
 <div id="editQuantityModal" class="relative z-50 hidden">
@@ -334,8 +392,21 @@
                     <div class="bg-white px-4 pb-4 pt-5 sm:p-6 sm:pb-4">
                         <h3 class="text-lg font-semibold leading-6 text-slate-900 mb-2">Edit Quantity</h3>
                         <div class="mb-4">
-                            <label class="block text-sm font-medium text-slate-700 mb-1">New Quantity for <span id="edit_qty_po" class="font-bold text-slate-800"></span></label>
-                            <input type="number" name="quantity" id="edit_qty_input" step="any" min="0.01" class="block w-full rounded-md border-slate-300 shadow-sm border p-2 focus:ring-indigo-500 focus:border-indigo-500 sm:text-lg font-mono">
+                            <label class="block text-sm font-medium text-slate-700 mb-1">
+                                New Quantity for <span id="edit_qty_po" class="font-bold text-slate-800"></span>
+                            </label>
+
+                            <div id="edit_qty_desc" class="text-sm text-slate-500 mb-3 italic border-l-2 border-slate-200 pl-2"></div>
+
+                            <input type="number"
+                                   name="quantity"
+                                   id="edit_qty_input"
+                                   step="1"
+                                   min="1"
+                                   required
+                                   oninput="this.value = this.value.replace(/[^0-9]/g, '');"
+                                   class="block w-full rounded-md border-slate-300 shadow-sm border p-2 focus:ring-indigo-500 focus:border-indigo-500 sm:text-lg font-mono">
+
                             <p class="text-xs text-slate-500 mt-2">
                                 * Updating quantity will automatically recalculate material requirements.
                             </p>
@@ -460,7 +531,7 @@
                                 <input type="date" name="start_date" class="mt-1 block w-full rounded-md border-slate-300 border p-2 text-sm" required>
                             </div>
                             <div class="pt-4">
-                                <button type="submit" class="w-full rounded-md bg-indigo-600 px-3 py-2 text-sm font-semibold text-white hover:bg-indigo-500 shadow-sm">Save as Draft</button>
+                                <button type="submit" class="w-full rounded-md bg-indigo-600 px-3 py-2 text-sm font-semibold text-white hover:bg-indigo-50 shadow-sm">Save as Draft</button>
                             </div>
                         </form>
                     </div>
@@ -504,18 +575,33 @@
         }
     };
 
-    // --- NEW: Filter Logic (AJAX) ---
+    // --- [UPDATED] Filter Logic: Month & Search ---
     window.applyFilters = function() {
-        const search = document.getElementById('filter_search').value;
-        const dateFrom = document.getElementById('filter_date_from').value;
-        const dateTo = document.getElementById('filter_date_to').value;
+        const search = document.getElementById('searchInput').value;
+        const month = document.getElementById('monthFilter').value;
+        const sort = document.getElementById('filter_sort').value;
+        const direction = document.getElementById('filter_direction').value;
+        const page = document.getElementById('filter_page').value;
 
         const params = new URLSearchParams();
         if(search) params.append('search', search);
-        if(dateFrom) params.append('date_from', dateFrom);
-        if(dateTo) params.append('date_to', dateTo);
 
-        // Fetch partial content
+        // Convert Month (YYYY-MM) to Date Range
+        if (month) {
+            const [year, mth] = month.split('-');
+            const firstDay = `${month}-01`;
+            // Calculate last day: Day 0 of next month is last day of current
+            const lastDayDate = new Date(year, mth, 0);
+            const lastDay = `${year}-${String(lastDayDate.getMonth() + 1).padStart(2,'0')}-${String(lastDayDate.getDate()).padStart(2,'0')}`;
+
+            params.append('date_from', firstDay);
+            params.append('date_to', lastDay);
+        }
+
+        if(sort) params.append('sort', sort);
+        if(direction) params.append('direction', direction);
+        if(page) params.append('page', page);
+
         fetch(`${window.location.pathname}?${params.toString()}`, {
             headers: {
                 'X-Requested-With': 'XMLHttpRequest'
@@ -526,16 +612,61 @@
             const container = document.getElementById('dashboard-content');
             if(container) {
                 container.innerHTML = html;
+                // Re-execute scripts
+                const scripts = container.querySelectorAll('script');
+                scripts.forEach(oldScript => {
+                     const newScript = document.createElement('script');
+                     Array.from(oldScript.attributes).forEach(attr => newScript.setAttribute(attr.name, attr.value));
+                     newScript.appendChild(document.createTextNode(oldScript.innerHTML));
+                     oldScript.parentNode.replaceChild(newScript, oldScript);
+                });
             } else {
                 window.location.href = `${window.location.pathname}?${params.toString()}`;
             }
         });
     };
 
-    window.resetFilters = function() {
-        document.getElementById('filter_search').value = '';
-        document.getElementById('filter_date_from').value = '';
-        document.getElementById('filter_date_to').value = '';
+    window.resetPageAndApply = function() {
+        document.getElementById('filter_page').value = 1;
+        window.applyFilters();
+    };
+
+    // [NEW] Quick Month Navigation
+    window.changeMonth = function(offset) {
+        const input = document.getElementById('monthFilter');
+        let currentVal = input.value;
+        if (!currentVal) {
+            const now = new Date();
+            currentVal = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+        }
+        const [year, month] = currentVal.split('-').map(Number);
+        const dateObj = new Date(year, month - 1 + offset, 1);
+        const newYear = dateObj.getFullYear();
+        const newMonth = String(dateObj.getMonth() + 1).padStart(2, '0');
+        const newVal = `${newYear}-${newMonth}`;
+        input.value = newVal;
+        window.resetPageAndApply();
+    }
+
+    // Sorting Helper
+    window.changeSort = function(field) {
+        const currentSort = document.getElementById('filter_sort').value;
+        const currentDir = document.getElementById('filter_direction').value;
+
+        let newDir = 'asc';
+        if (currentSort === field) {
+            newDir = (currentDir === 'asc') ? 'desc' : 'asc';
+        }
+
+        document.getElementById('filter_sort').value = field;
+        document.getElementById('filter_direction').value = newDir;
+        document.getElementById('filter_page').value = 1;
+
+        window.applyFilters();
+    };
+
+    window.changePage = function(pageNum) {
+        document.getElementById('filter_page').value = pageNum;
         window.applyFilters();
     };
 
@@ -543,7 +674,6 @@
     window.openEstimatorModal = function() {
         const modal = document.getElementById('estimatorModal');
         if(modal) modal.classList.remove('hidden');
-        // Reset Search
         document.getElementById('est_product_search').value = '';
         document.getElementById('est_product_id').value = '';
         document.getElementById('est_table_body').innerHTML = '<tr><td colspan="4" class="text-center py-10 text-slate-400">Select a product to calculate BOM.</td></tr>';
@@ -600,16 +730,20 @@
         window.runEstimation();
     };
 
-
     // 3. Edit Quantity Logic
-    window.openEditQuantityModal = function(id, qty, po) {
+    window.openEditQuantityModal = function(id, qty, po, desc) {
         const modal = document.getElementById('editQuantityModal');
         const form = document.getElementById('editQuantityForm');
         const poSpan = document.getElementById('edit_qty_po');
+        const descDiv = document.getElementById('edit_qty_desc'); // [NEW]
         const input = document.getElementById('edit_qty_input');
 
         form.action = `/production/order/${id}/update/`;
         poSpan.innerText = po;
+
+        // [NEW] Set Description
+        if(descDiv) descDiv.innerText = desc || '';
+
         input.value = qty;
         modal.classList.remove('hidden');
 
@@ -620,60 +754,7 @@
         document.getElementById('editQuantityModal').classList.add('hidden');
     }
 
-    // [NEW] Projected Allocation Logic
-    window.openProjectedModal = function(poId) {
-        const modal = document.getElementById('projectedAllocationModal');
-        const tbody = document.getElementById('proj_table_body');
-
-        // Reset/Loading state
-        document.getElementById('proj_po_number').innerText = 'Loading...';
-        document.getElementById('proj_po_qty').innerText = '-';
-        document.getElementById('proj_remaining').innerText = '-';
-        tbody.innerHTML = '<tr><td colspan="5" class="text-center py-4 text-slate-400">Calculating...</td></tr>';
-
-        modal.classList.remove('hidden');
-
-        fetch(`/production/api/projected-allocation/${poId}/`)
-            .then(res => res.json())
-            .then(data => {
-                document.getElementById('proj_po_number').innerText = data.po_number;
-                document.getElementById('proj_po_qty').innerText = data.po_qty.toFixed(0);
-                document.getElementById('proj_remaining').innerText = data.remaining_free_stock.toFixed(0);
-
-                tbody.innerHTML = '';
-
-                if (data.allocations.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="5" class="text-center py-8 text-slate-400 italic">No unfulfilled actual sales found after this PO date.</td></tr>';
-                    return;
-                }
-
-                data.allocations.forEach(row => {
-                    let statusColor = 'bg-yellow-100 text-yellow-800'; // Partial
-                    if (row.status === 'Fully Covered') statusColor = 'bg-emerald-100 text-emerald-800';
-                    if (row.status === 'No Stock') statusColor = 'bg-red-100 text-red-800';
-
-                    tbody.innerHTML += `
-                        <tr>
-                            <td class="px-4 py-2 font-medium text-slate-800">${row.customer}</td>
-                            <td class="px-4 py-2 text-slate-600">${row.date}</td>
-                            <td class="px-4 py-2 text-right text-slate-500">${row.gap.toFixed(0)}</td>
-                            <td class="px-4 py-2 text-right font-bold text-indigo-600">+${row.po_contribution.toFixed(0)}</td>
-                            <td class="px-4 py-2 text-center">
-                                <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${statusColor}">
-                                    ${row.status}
-                                </span>
-                            </td>
-                        </tr>
-                    `;
-                });
-            })
-            .catch(err => {
-                console.error(err);
-                tbody.innerHTML = '<tr><td colspan="5" class="text-center py-4 text-red-500">Error loading data.</td></tr>';
-            });
-    }
-
-    // Run Estimation (AJAX) - UPDATED TO SHOW PROJECTED AVAIL
+    // Run Estimation (AJAX)
     window.runEstimation = function() {
         const productId = document.getElementById('est_product_id').value;
         const qty = document.getElementById('est_quantity').value;
@@ -719,13 +800,12 @@
             });
     };
 
-    // 4. Init Date Fields (Auto-fill Today for Create & Estimator only)
-    // 专门选择 createModal 和 estimatorModal 中的日期输入框，避免影响 Filter 的日期框
+    // 5. Init Date Fields (Auto-fill Today)
     const dateFields = document.querySelectorAll('#createModal input[type="date"], #estimatorModal input[type="date"]');
     const today = new Date().toISOString().split('T')[0];
     dateFields.forEach(f => { if(!f.value) f.value = today; });
 
-    // 5. Handle ESC
+    // 6. Handle ESC
     document.addEventListener('keydown', function(e) {
         if (e.key === "Escape") {
             if(window.closeEstimatorModal) window.closeEstimatorModal();
@@ -737,6 +817,46 @@
             if(projModal) projModal.classList.add('hidden');
         }
     });
+
+    // 7. [NEW] AJAX Form Submission for Quantity & Status
+    // This prevents page reload and keeps search/filter params
+    function attachAjaxForm(formId, closeFunc) {
+        const form = document.getElementById(formId);
+        if(!form) return;
+
+        form.onsubmit = function(e) {
+            e.preventDefault();
+            const btn = form.querySelector('button[type="submit"]');
+            const originalText = btn.innerText;
+            btn.disabled = true;
+            btn.innerText = 'Updating...';
+
+            // Submit form via fetch
+            fetch(form.action, {
+                method: 'POST',
+                body: new FormData(form),
+                headers: {'X-Requested-With': 'XMLHttpRequest'}
+            })
+            .then(res => {
+                if(res.ok) {
+                    // Success: Close Modal & Refresh Grid via AJAX
+                    if(closeFunc) closeFunc();
+                    window.applyFilters();
+                } else {
+                    alert("Update failed.");
+                }
+            })
+            .catch(err => console.error(err))
+            .finally(() => {
+                btn.disabled = false;
+                btn.innerText = originalText;
+            });
+        };
+    }
+
+    // Attach listeners to both forms
+    attachAjaxForm('editQuantityForm', window.closeEditQuantityModal);
+    attachAjaxForm('editStatusForm', window.closeEditStatusModal);
 
 })();
 </script>

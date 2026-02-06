@@ -7,6 +7,11 @@ from production.models import ProductionOrder
 from forecast.models import MarketDemand
 from django.utils import timezone
 
+from django.shortcuts import redirect
+from django.contrib import messages
+from django.core.management import call_command
+from django.contrib.auth.decorators import login_required, user_passes_test
+from django.views.decorators.http import require_POST
 
 
 def home(request):
@@ -52,7 +57,7 @@ def home(request):
         'chart_values': [float(d['total_qty']) for d in history_data],
     }
 
-    if request.headers.get('x-requested-with') == 'XMLHttpRequest': 
+    if request.headers.get('x-requested-with') == 'XMLHttpRequest':
         return render(request, 'core/partials/dashboard_content.html', context)
 
     return render(request, 'core/dashboard.html', context)
@@ -64,3 +69,18 @@ def resume_view(request):
 
     return render(request, 'core/resume.html')
 
+
+@login_required
+@require_POST
+def reset_demo_data(request):
+    """
+    运行 seed_data 命令重置数据库
+    """
+    try:
+        call_command('seed_data')
+        messages.success(request, "♻️ 演示数据已重置！Database restored to default.")
+    except Exception as e:
+        messages.error(request, f"重置失败: {str(e)}")
+
+    # 重置后返回用户原本所在的页面，如果找不到则回首页
+    return redirect(request.META.get('HTTP_REFERER', 'core:home'))

@@ -28,83 +28,71 @@
         </div>
     </div>
 
-    <form method="POST">
-        {% csrf_token %}
-
-        <div class="bg-white shadow rounded-lg overflow-hidden mb-6 border border-gray-200">
+    <div class="bg-white shadow rounded-lg overflow-hidden mb-6 border border-gray-200">
             <div class="px-6 py-4 border-b border-gray-200 bg-gray-50 flex justify-between items-center">
-                <h3 class="font-bold text-gray-700 flex items-center">
-                    <i class="bi bi-list-task mr-2 text-indigo-500"></i>Production Suggestions
-                </h3>
+            <h3 class="font-bold text-gray-700 flex items-center">
+                <i class="bi bi-list-task mr-2 text-indigo-500"></i>Production Suggestions
+            </h3>
 
-                {% if not plan.is_locked %}
-                <button type="submit" name="convert_po" class="bg-indigo-600 text-white px-4 py-2 rounded shadow hover:bg-indigo-700 text-sm font-medium transition flex items-center">
-                    <i class="bi bi-check2-all mr-2"></i> Confirm & Create POs
-                </button>
-                {% else %}
-                <span class="bg-green-100 text-green-800 px-3 py-1 rounded-full text-xs font-bold border border-green-200">
-                    <i class="bi bi-lock-fill mr-1"></i> Plan Locked
-                </span>
-                {% endif %}
-            </div>
+            {% if plan.is_locked %}
+            <span class="bg-green-100 text-green-800 px-3 py-1 rounded-full text-xs font-bold border border-green-200">
+                <i class="bi bi-lock-fill mr-1"></i> Plan Locked
+            </span>
+            {% endif %}
+        </div>
 
-            <table class="min-w-full text-left text-sm">
-                <thead class="bg-gray-50 text-gray-500 uppercase font-semibold text-xs">
-                    <tr>
-                        <th class="px-6 py-3 w-10">
-                            {% if not plan.is_locked %}
-                            <input type="checkbox" onclick="toggleAll(this)" class="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer">
-                            {% endif %}
-                        </th>
-                        <th class="px-6 py-3">Product</th>
-                        <th class="px-6 py-3 text-right">Suggested Qty</th>
-                        <th class="px-6 py-3 text-center">Start Date</th>
-                        <th class="px-6 py-3 text-center">Due Date (ETA)</th>
-                        <th class="px-6 py-3 text-right">Status</th>
-                    </tr>
-                </thead>
-                <tbody class="divide-y divide-gray-100">
-                    {% for entry in plan.entries.all %}
-                    <tr class="hover:bg-gray-50 transition-colors">
-                        <td class="px-6 py-4">
-                            {% if not entry.production_order %}
-                                <input type="checkbox" name="selected_entries" value="{{ entry.id }}" class="entry-checkbox rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer">
-                            {% else %}
-                                <i class="bi bi-check-circle-fill text-green-500 text-lg"></i>
-                            {% endif %}
-                        </td>
-                        <td class="px-6 py-4">
-                            <div class="font-bold text-gray-900">{{ entry.product.sku }}</div>
-                            <div class="text-xs text-gray-500 truncate max-w-[200px]">{{ entry.product.description }}</div>
-                        </td>
-                        <td class="px-6 py-4 text-right">
-                            <div class="flex items-center justify-end gap-2 group cursor-pointer"
+        <table class="min-w-full text-left text-sm">
+            <thead class="bg-gray-50 text-gray-500 uppercase font-semibold text-xs">
+                <tr>
+                    <th class="px-6 py-3">Product</th>
+                    <th class="px-6 py-3 text-right">Suggested Qty</th>
+                    <th class="px-6 py-3 text-center">Start Date</th>
+                    <th class="px-6 py-3 text-center">Due Date (ETA)</th>
+                    <th class="px-6 py-3 text-right">Status</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-gray-100">
+                {% for entry in plan.entries.all %}
+                <tr class="hover:bg-gray-50 transition-colors">
+                    <td class="px-6 py-4">
+                        <div class="font-bold text-gray-900">{{ entry.product.sku }}</div>
+                        <div class="text-xs text-gray-500 truncate max-w-[200px]">{{ entry.product.description }}</div>
+                    </td>
+                    <td class="px-6 py-4 text-right">
+                        <div class="flex items-center justify-end gap-3">
+                            <div class="group cursor-pointer flex items-center gap-1"
                                 onclick="openBreakdownModal('{{ entry.product.sku|escapejs }}', '{{ entry.product.description|escapejs }}', '{{ entry.calculation_note|escapejs }}')">
                                 <span class="text-lg font-bold text-blue-600 group-hover:underline">{{ entry.suggested_qty|floatformat:0 }}</span>
                                 <i class="bi bi-info-circle text-gray-300 group-hover:text-blue-500 text-xs"></i>
                             </div>
-                        </td>
-                        <td class="px-6 py-4 text-center text-gray-600 font-mono">{{ entry.suggested_start_date|date:"Y-m-d" }}</td>
-                        <td class="px-6 py-4 text-center text-gray-600 font-mono">{{ entry.eta_date|date:"Y-m-d" }}</td>
-                        <td class="px-6 py-4 text-right">
-                            {% if entry.production_order %}
-                                <a href="{% url 'production:detail' entry.production_order.id %}" class="text-indigo-600 hover:text-indigo-800 font-medium text-xs bg-indigo-50 px-2 py-1 rounded border border-indigo-100">
-                                    {{ entry.production_order.order_number }}
-                                </a>
-                            {% else %}
-                                <span class="text-yellow-700 text-xs bg-yellow-50 px-2 py-1 rounded border border-yellow-100 font-medium">Suggestion</span>
-                            {% endif %}
-                        </td>
-                    </tr>
-                    {% empty %}
-                    <tr>
-                        <td colspan="6" class="px-6 py-12 text-center text-gray-400">No suggestions found in this plan.</td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-        </div>
-    </form>
+
+                            <a href="{% url 'forecast:refresh_entry' entry.pk %}"
+                                class="text-gray-400 hover:text-indigo-600 transition p-1 rounded hover:bg-gray-100"
+                                title="Recalculate this item">
+                                <i class="bi bi-arrow-clockwise text-lg"></i>
+                            </a>
+                        </div>
+                    </td>
+                    <td class="px-6 py-4 text-center text-gray-600 font-mono">{{ entry.suggested_start_date|date:"Y-m-d" }}</td>
+                    <td class="px-6 py-4 text-center text-gray-600 font-mono">{{ entry.eta_date|date:"Y-m-d" }}</td>
+                    <td class="px-6 py-4 text-right">
+                        {% if entry.production_order %}
+                            <a href="{% url 'production:detail' entry.production_order.id %}" class="text-indigo-600 hover:text-indigo-800 font-medium text-xs bg-indigo-50 px-2 py-1 rounded border border-indigo-100">
+                                {{ entry.production_order.order_number }}
+                            </a>
+                        {% else %}
+                            <span class="text-yellow-700 text-xs bg-yellow-50 px-2 py-1 rounded border border-yellow-100 font-medium">Suggestion</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% empty %}
+                <tr>
+                    <td colspan="5" class="px-6 py-12 text-center text-gray-400">No suggestions found in this plan.</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
 </div>
 
 <div id="breakdownModal" class="relative z-50 hidden" aria-labelledby="modal-title" role="dialog" aria-modal="true">
@@ -141,8 +129,9 @@
                     </div>
 
                     <div class="mt-4 text-xs text-gray-400">
-                        <p>* <strong>Gross Req</strong> = (Total Actual Order - Allocated). This is the unmet backlog.</p>
-                        <p>* <strong>Inbound</strong> = WIP + Confirmed Projected POs.</p>
+                        <p>* <strong>Actual Orders</strong> = Confirmed sales orders (unshipped).</p>
+                        <p>* <strong>Gross Req</strong> = (Actual Orders - Allocated).</p>
+                        <p>* <strong>Forecast</strong> is shown for reference only and does not affect calculation.</p>
                     </div>
                 </div>
             </div>
@@ -151,19 +140,11 @@
 </div>
 
 <script>
-    function toggleAll(source) {
-        const checkboxes = document.getElementsByClassName('entry-checkbox');
-        for(let i=0; i<checkboxes.length; i++) {
-            checkboxes[i].checked = source.checked;
-        }
-    }
-
     function openBreakdownModal(sku, description, noteJson) {
         const modal = document.getElementById('breakdownModal');
         const tbody = document.getElementById('bd_table_body');
         tbody.innerHTML = '';
 
-        // Set Title with SKU and Description
         document.getElementById('breakdownTitle').innerHTML = `
             MRP Analysis: <span class="text-indigo-600">${sku}</span>
             <span class="text-gray-400 font-normal ml-2">- ${description}</span>
@@ -172,7 +153,7 @@
         try {
             const data = JSON.parse(noteJson);
 
-            // 1. Initial Balance Row
+            // 1. Initial Balance
             tbody.innerHTML += `
                 <tr class="bg-gray-50/50">
                     <td class="px-3 py-2 whitespace-nowrap text-gray-500 italic">Initial Balance</td>
@@ -183,13 +164,25 @@
 
             // 2. Monthly Rows
             data.months.forEach(m => {
-                // FORCE conversion to number to handle potential nulls/strings
                 const inboundVal = Number(m.inbound || 0);
+
+                // [FIX] Separate visual for Forecast benchmark
+                let forecastHtml = '';
+                if (m.demand_forecast) {
+                    forecastHtml = `
+                        <div class="text-[10px] text-gray-400 mt-0.5" title="Benchmark Only">
+                            (Fcst: ${m.demand_forecast})
+                        </div>
+                    `;
+                }
 
                 tbody.innerHTML += `
                     <tr>
                         <td class="px-3 py-2 whitespace-nowrap font-medium text-gray-900">${m.month}</td>
-                        <td class="px-3 py-2 text-right text-gray-500">${m.demand}</td>
+                        <td class="px-3 py-2 text-right text-gray-900 font-bold">
+                            ${m.demand}
+                            ${forecastHtml}
+                        </td>
                         <td class="px-3 py-2 text-right text-gray-500">${m.allocated}</td>
                         <td class="px-3 py-2 text-right font-bold text-gray-800 bg-gray-50">${m.gross_req}</td>
                         <td class="px-3 py-2 text-right text-blue-600 font-medium">

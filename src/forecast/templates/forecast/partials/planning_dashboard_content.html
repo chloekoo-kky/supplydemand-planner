@@ -1,0 +1,101 @@
+<div class="space-y-6 p-6">
+
+    <div class="flex justify-between items-center mb-2">
+        <div>
+            <h2 class="text-2xl font-bold text-gray-800">Planning & MRP</h2>
+            <p class="text-sm text-gray-500">Manage production requirements and review forecast plans.</p>
+        </div>
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+
+        <div class="bg-white rounded-lg shadow overflow-hidden h-fit">
+            <div class="px-6 py-4 border-b border-gray-200 bg-gray-50">
+                <h3 class="text-lg font-bold text-gray-900 flex items-center">
+                    <i class="bi bi-cpu text-indigo-600 mr-2"></i> MRP Engine
+                </h3>
+            </div>
+            <div class="p-6">
+                <p class="text-sm text-gray-600 mb-6">
+                    The MRP Engine calculates net material requirements by analyzing the Sales Forecast against current Inventory and WIP.
+                </p>
+
+                <div class="bg-blue-50 border-l-4 border-blue-400 p-4 mb-6">
+                    <div class="flex">
+                        <div class="flex-shrink-0">
+                            <i class="bi bi-info-circle text-blue-400"></i>
+                        </div>
+                        <div class="ml-3">
+                            <p class="text-sm text-blue-700">
+                                Output will generate a new <strong>Forecast Plan</strong> containing production suggestions (Draft IOs).
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
+                <button onclick="openMrpModal()" class="w-full flex justify-center items-center px-4 py-3 border border-transparent rounded-md shadow-sm text-base font-medium text-white bg-indigo-600 hover:bg-indigo-700 transition focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
+                    <i class="bi bi-play-fill mr-2"></i> Run MRP Calculation
+                </button>
+            </div>
+        </div>
+
+        <div class="lg:col-span-2 bg-white rounded-lg shadow overflow-hidden flex flex-col h-[600px]">
+            <div class="px-6 py-4 border-b border-gray-200 bg-gray-50 flex justify-between items-center">
+                <h3 class="text-lg font-bold text-gray-900">Plan History</h3>
+                <span class="text-xs bg-gray-200 text-gray-600 py-1 px-3 rounded-full font-medium">{{ total_plans }} Generated</span>
+            </div>
+
+            <div class="flex-1 overflow-auto">
+                <table class="min-w-full text-left text-sm whitespace-nowrap">
+                    <thead class="bg-gray-50 text-gray-500 sticky top-0">
+                        <tr>
+                            <th class="px-6 py-3 font-medium">Plan Name</th>
+                            <th class="px-6 py-3 font-medium">Created Date</th>
+                            <th class="px-6 py-3 font-medium text-center">Refresh</th>
+                            <th class="px-6 py-3 font-medium text-right">Action</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-gray-200">
+                        {% for plan in plans %}
+                        <tr class="hover:bg-gray-50 transition">
+                            <td class="px-6 py-4 font-medium text-gray-900">{{ plan.name }}</td>
+                            <td class="px-6 py-4 text-gray-500">{{ plan.created_at|date:"M d, Y H:i" }}</td>
+
+                            <td class="px-6 py-4 text-center">
+                                <a href="{% url 'forecast:refresh_plan' plan.pk %}"
+                                class="inline-flex items-center text-gray-500 hover:text-indigo-600 transition"
+                                title="Regenerate Plan">
+                                    <i class="bi bi-arrow-clockwise text-xl"></i>
+                                </a>
+                            </td>
+
+                            <td class="px-6 py-4 text-right">
+                                <a href="{% url 'forecast:plan_detail' plan.pk %}" class="text-indigo-600 hover:text-indigo-900 font-medium">
+                                    View Details <i class="bi bi-arrow-right ml-1"></i>
+                                </a>
+                            </td>
+                        </tr>
+                        {% empty %}
+                        <tr>
+                            <td colspan="4" class="px-6 py-12 text-center text-gray-500">
+                                <i class="bi bi-clipboard-x text-4xl mb-3 block text-gray-300"></i>
+                                No plans generated yet. Run the MRP Engine to create one.
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+    </div>
+</div>
+
+{% include 'forecast/partials/run_mrp_modal.html' %}
+
+<script>
+    function openMrpModal() {
+        const modal = document.getElementById('runMrpModal');
+        if(modal) modal.classList.remove('hidden');
+    }
+</script>

@@ -72,7 +72,7 @@
                     <span class="w-2 h-2 {% if item.current_stock == 0 %}bg-red-500{% else %}bg-yellow-500{% endif %} rounded-full block mt-2"></span>
                 </div>
                 <div class="ml-3">
-                    <p class="text-sm font-medium text-gray-800">{{ item.name }}</p>
+                    <p class="text-sm font-medium text-gray-800">{{ item.description }}</p>
                     <p class="text-xs {% if item.current_stock == 0 %}text-red-600{% else %}text-yellow-700{% endif %}">
                         Stock: {{ item.current_stock|default:"0" }} / Req: {{ item.calculated_safety_stock|floatformat:0 }}
                     </p>
