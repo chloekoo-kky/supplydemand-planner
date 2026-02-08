@@ -4,6 +4,7 @@ import json
 from django.shortcuts import render, redirect, get_object_or_404
 from django.http import JsonResponse
 from django.contrib import messages
+from django.contrib.auth.decorators import login_required
 from django.db.models import (
     F, Sum, Subquery, OuterRef,
     Min, Max, Q
@@ -23,7 +24,7 @@ from .services import (
 )
 
 
-
+@login_required
 def production_dashboard(request):
     """
     Production Overview with Time-Phased Inventory Logic (APS Level 1).
@@ -154,7 +155,7 @@ def production_dashboard(request):
 
     return render(request, 'production/production_dashboard.html', context)
 
-
+@login_required
 def production_dashboard_impl(request):
     # Full implementation of production_dashboard as provided in previous turns
     # Copy the full content of production_dashboard here from your file
@@ -242,7 +243,7 @@ def production_dashboard_impl(request):
 
     return render(request, 'production/production_dashboard.html', context)
 
-
+@login_required
 def api_projected_allocation(request, pk):
     """
     Calculate which Actual Sales Orders this PO can fulfill.
@@ -303,7 +304,7 @@ def api_projected_allocation(request, pk):
         'remaining_free_stock': max(0, po_qty_remaining)
     })
 
-
+@login_required
 def production_update_status(request, pk):
     """
     Update Production Order Status (via Edit Modal)
@@ -362,7 +363,7 @@ def production_update_status(request, pk):
 
     return redirect('production:dashboard')
 
-
+@login_required
 def production_create(request):
     """Create Order (Draft or Confirmed)"""
     if request.method == 'POST':
@@ -394,7 +395,7 @@ def production_create(request):
 
     return redirect('production:dashboard')
 
-
+@login_required
 def production_update_quantity(request, pk):
     """Update Order Quantity (Draft Only)"""
     order = get_object_or_404(ProductionOrder, pk=pk)
@@ -420,7 +421,7 @@ def production_update_quantity(request, pk):
 
     return redirect('production:dashboard')
 
-
+@login_required
 def production_detail(request, pk):
     """
     Detailed view with full logic (kept for fallback or detailed analysis)
@@ -483,7 +484,7 @@ def production_detail(request, pk):
 
     return render(request, 'production/production_detail.html', context)
 
-
+@login_required
 def production_action(request, pk, action):
     """Handle Status Changes: Confirm, Complete, Cancel"""
     order = get_object_or_404(ProductionOrder, pk=pk)
@@ -518,7 +519,7 @@ def production_action(request, pk, action):
 
     return redirect('production:dashboard')
 
-
+@login_required
 def get_product_max_capacity(request):
     """API: Simple Max Capacity based on BOM and SOH"""
     product_id = request.GET.get('product_id')
@@ -546,7 +547,7 @@ def get_product_max_capacity(request):
     final_max_qty = min(max_possible_list) if max_possible_list else 0
     return JsonResponse({'max_qty': final_max_qty})
 
-
+@login_required
 def calculate_production_capacity(request):
     """
     API: Estimator Logic
@@ -615,7 +616,7 @@ def calculate_production_capacity(request):
     })
 
 
-
+@login_required
 def production_calendar(request):
     """渲染日历主页面"""
     context = {
@@ -693,6 +694,7 @@ def calendar_events_api(request):
 
     return JsonResponse(events, safe=False)
 
+@login_required
 @csrf_exempt # 简化演示，实际项目建议保留 CSRF 保护
 @require_POST
 def calendar_move_api(request):
@@ -722,7 +724,7 @@ def calendar_move_api(request):
     except Exception as e:
         return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
 
-
+@login_required
 def production_complete_submission(request, pk):
     """
     Handle the 'Complete Production' modal submission.

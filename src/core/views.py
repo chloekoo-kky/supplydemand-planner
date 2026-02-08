@@ -1,19 +1,76 @@
 # src/core/views.py
-from django.shortcuts import render
-from inventory.models import Product
-from django.db.models import Sum, Count, F, OuterRef, Subquery
+from django.shortcuts import render, redirect
+from django.contrib import messages
+from django.contrib.auth import login, logout
+from django.utils.crypto import get_random_string
+from django.contrib.auth.forms import AuthenticationForm
+from django.contrib.auth.models import User
+from django.core.management import call_command
+from django.contrib.auth.decorators import login_required
+from django.db.models import Sum, F, OuterRef, Subquery
+from django.utils import timezone
+from django.views.decorators.http import require_POST
 from inventory.models import Product, InventorySnapshot
 from production.models import ProductionOrder
-from forecast.models import MarketDemand
-from django.utils import timezone
 
-from django.shortcuts import redirect
-from django.contrib import messages
-from django.core.management import call_command
-from django.contrib.auth.decorators import login_required, user_passes_test
-from django.views.decorators.http import require_POST
+def logout_view(request):
+    """Logs out the user and redirects to the login page."""
+    logout(request)
+    return redirect('core:login')
 
+def login_view(request):
+    """
+    Standard Login: Authenticates real users without modifying data.
+    New users start with the current database state (empty if not seeded).
+    """
+    if request.user.is_authenticated:
+        return redirect('core:home')
 
+    if request.method == 'POST':
+        form = AuthenticationForm(request, data=request.POST)
+        if form.is_valid():
+            user = form.get_user()
+            login(request, user)
+            # CRITICAL: Do NOT run seed_data here.
+            # Real users manage their own data.
+            return redirect('core:home')
+    else:
+        form = AuthenticationForm()
+
+    context = {'form': form}
+
+    # [Fix] Return Partial content for AJAX requests (e.g. Session Expiry Redirects)
+    if request.headers.get('x-requested-with') == 'XMLHttpRequest':
+        return render(request, 'core/partials/login_content.html', context)
+
+    return render(request, 'core/login.html', context)
+
+def demo_login_view(request):
+    """
+    Demo Path: Logs in as 'guest_visitor' and forcefully resets/seeds data.
+    """
+    username = 'guest_visitor'
+    user, created = User.objects.get_or_create(username=username)
+
+    if created:
+        user.set_password('demo_password_123')
+        user.is_staff = False
+        user.save()
+
+    # Log the user in
+    login(request, user)
+
+    # Trigger Data Seeding immediately
+    try:
+        # This command clears the DB and repopulates it with Asia/Kuala_Lumpur aligned data
+        call_command('seed_data')
+        messages.success(request, "🚀 Welcome to the Live Demo! Data has been refreshed.")
+    except Exception as e:
+        messages.error(request, f"Demo initialization failed: {str(e)}")
+
+    return redirect('core:home')
+
+@login_required
 def home(request):
     # 获取每个产品最新的库存快照
     latest_snapshot = InventorySnapshot.objects.filter(
@@ -62,25 +119,21 @@ def home(request):
 
     return render(request, 'core/dashboard.html', context)
 
-
 def resume_view(request):
     if request.headers.get('x-requested-with') == 'XMLHttpRequest':
         return render(request, 'core/partials/resume_content.html')
-
     return render(request, 'core/resume.html')
-
 
 @login_required
 @require_POST
 def reset_demo_data(request):
     """
-    运行 seed_data 命令重置数据库
+    Manual reset button (optional usage within the app)
     """
     try:
         call_command('seed_data')
-        messages.success(request, "♻️ 演示数据已重置！Database restored to default.")
+        messages.success(request, "♻️ Data reset successfully.")
     except Exception as e:
-        messages.error(request, f"重置失败: {str(e)}")
+        messages.error(request, f"Reset failed: {str(e)}")
 
-    # 重置后返回用户原本所在的页面，如果找不到则回首页
     return redirect(request.META.get('HTTP_REFERER', 'core:home'))

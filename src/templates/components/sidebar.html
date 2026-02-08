@@ -114,12 +114,14 @@
             </div>
         </a>
         </div>
-            <div class="mt-auto p-3">
-            <form action="{% url 'core:reset_demo_data' %}" method="POST" onsubmit="return confirm('Reset all data to default demo state?');">
-                {% csrf_token %}
-                <button type="submit" class="btn btn-outline-danger w-100 btn-sm">
-                    <i class="bi bi-arrow-counterclockwise"></i> Reset Demo Data
-                </button>
-            </form>
-        </div>
+        {% if user.username == 'guest_visitor' %}
+    <div class="p-4 pt-0">
+        <form action="{% url 'core:reset_demo_data' %}" method="POST" onsubmit="return confirm('Reset all data to default demo state?');">
+            {% csrf_token %}
+            <button type="submit" class="w-full flex items-center justify-center px-4 py-2 border border-red-500/50 text-white-400 text-xs font-bold uppercase tracking-wider rounded transition-colors hover:bg-red-500 hover:text-white">
+                <i class="bi bi-arrow-counterclockwise mr-2"></i> Reset Demo
+            </button>
+        </form>
+    </div>
+    {% endif %}
 </aside>

@@ -1,0 +1,62 @@
+<div class="min-h-full flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8 bg-gray-50">
+    <div class="max-w-md w-full space-y-8 bg-white p-10 rounded-xl shadow-lg border border-gray-100">
+        <div>
+            <h2 class="mt-6 text-center text-3xl font-extrabold text-gray-900">
+                Sign in to Supply Planner
+            </h2>
+            <p class="mt-2 text-center text-sm text-gray-600">
+                Enter your credentials or try the live demo
+            </p>
+        </div>
+
+        {# Important: Add action URL explicitly so it works if loaded via AJAX on a different URL path #}
+        <form class="mt-8 space-y-6" method="POST" action="{% url 'core:login' %}">
+            {% csrf_token %}
+
+            {% if form.non_field_errors %}
+                <div class="rounded-md bg-red-50 p-4">
+                    <div class="flex">
+                        <div class="ml-3">
+                            <h3 class="text-sm font-medium text-red-800">
+                                Login Failed
+                            </h3>
+                            <div class="mt-2 text-sm text-red-700">
+                                {{ form.non_field_errors }}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            {% endif %}
+
+            <div class="rounded-md shadow-sm -space-y-px">
+                <div class="mb-4">
+                    <label for="id_username" class="block text-sm font-medium text-gray-700">Username</label>
+                    <input id="id_username" name="username" type="text" required
+                        class="appearance-none rounded-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-t-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
+                </div>
+                <div>
+                    <label for="id_password" class="block text-sm font-medium text-gray-700">Password</label>
+                    <input id="id_password" name="password" type="password" required
+                        class="appearance-none rounded-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-b-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
+                </div>
+            </div>
+
+            <div>
+                <button type="submit" class="group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
+                    Sign in
+                </button>
+            </div>
+        </form>
+
+        <div class="relative">
+            <div class="absolute inset-0 flex items-center"><div class="w-full border-t border-gray-300"></div></div>
+            <div class="relative flex justify-center text-sm"><span class="px-2 bg-white text-gray-500">Or</span></div>
+        </div>
+
+        <div>
+            <a href="{% url 'core:demo_login' %}" class="w-full flex justify-center py-2 px-4 border border-blue-600 text-sm font-medium rounded-md text-blue-600 bg-white hover:bg-blue-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
+                <i class="bi bi-play-circle mr-2"></i> View Live Demo (Auto-Seeded)
+            </a>
+        </div>
+    </div>
+</div>

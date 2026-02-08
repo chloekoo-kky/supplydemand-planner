@@ -3,39 +3,43 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    # Overrides Dockerfile CMD to use dev server
-    command: python manage.py runserver 0.0.0.0:8000
+    # Uses default CMD (gunicorn) from Dockerfile
+    # NO volume mount for ./src (Code is baked into image)
     volumes:
-      - ./src:/app             # Hot reloading
       - static_volume:/vol/web/static
       - media_volume:/vol/web/media
-    ports:
-      - "8002:8000"
     env_file:
-      - .env
+      - .env.prod
     depends_on:
       db:
         condition: service_healthy
       redis:
         condition: service_started
 
+  # New Nginx Service
+  proxy:
+    build:
+      context: ./proxy
+    ports:
+      - "80:80"  # Expose standard web port (Add 443 here if using SSL certs)
+    volumes:
+      - static_volume:/vol/web/static
+      - media_volume:/vol/web/media
+    depends_on:
+      - app
+
   db:
     image: postgres:15-alpine
     volumes:
       - postgres_data:/var/lib/postgresql/data
-    # REFACTORED: Now uses variables from your .env file
-    environment:
-      - POSTGRES_DB=${DB_NAME}
-      - POSTGRES_USER=${DB_USER}
-      - POSTGRES_PASSWORD=${DB_PASS}
+    env_file:
+      - .env.prod # Use secure passwords
     healthcheck:
-      # Updated to use the variable so it matches the actual user
-      test: ["CMD-SHELL", "pg_isready -U ${DB_USER}"]
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 5s
       timeout: 5s
       retries: 5
-    ports:
-      - "5432:5432" # Open for local tools (DBeaver etc)
+    # Port 5432 REMOVED for security (Internal only)
 
   redis:
     image: redis:7-alpine

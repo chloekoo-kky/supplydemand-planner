@@ -211,7 +211,7 @@
                             <div>
                                 <div class="font-bold text-slate-900 text-sm">{{ order.order_number }}</div>
                                 <div class="text-xs font-semibold text-slate-700">{{ order.product.sku }}</div>
-                                <div class="text-[10px] text-slate-400 truncate max-w-[180px] leading-tight" title="{{ order.product.description }}">
+                                <div class="text-[14px] text-slate-600 truncate max-w-[180px] leading-tight" title="{{ order.product.description }}">
                                     {{ order.product.description }}
                                 </div>
                             </div>
@@ -245,7 +245,7 @@
                     </td>
 
                     <td class="px-6 py-4 text-right text-sm text-slate-500">
-                        {{ order.start_date|date:"M d" }}
+                        {{ order.start_date|date:"d/m/Y" }}
                     </td>
 
                     <td class="px-6 py-4">

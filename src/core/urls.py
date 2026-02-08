@@ -1,10 +1,14 @@
+# src/core/urls.py
 from django.urls import path
 from . import views
 
 app_name = 'core'
+
 urlpatterns = [
     path('', views.home, name='home'),
-    path('portfolio/', views.resume_view, name='resume'),
+    path('login/', views.login_view, name='login'),
+    path('logout/', views.logout_view, name='logout'), # Added Logout Path
+    path('demo-login/', views.demo_login_view, name='demo_login'),
+    path('resume/', views.resume_view, name='resume'),
     path('reset-demo/', views.reset_demo_data, name='reset_demo_data'),
-
 ]

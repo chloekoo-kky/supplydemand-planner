@@ -2,6 +2,8 @@ from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib import messages
 from django.db.models import Sum
 from django.utils import timezone
+from django.contrib.auth.decorators import login_required
+
 from datetime import date
 from django.views.decorators.http import require_POST
 from django.core.paginator import Paginator, EmptyPage, PageNotAnInteger
@@ -17,6 +19,7 @@ from .services import (
     convert_entries_to_orders, refresh_single_entry_logic
 )
 
+@login_required
 def forecast_dashboard(request):
     """
     Refactored Command Center.
@@ -161,7 +164,7 @@ def forecast_dashboard(request):
 
     return response
 
-
+@login_required
 def planning_dashboard(request):
     """
     [NEW] Dedicated page for MRP Engine and Forecast Plans.
@@ -193,7 +196,7 @@ def planning_dashboard(request):
     # or keep the extends and use a variable to toggle it.
     return render(request, 'forecast/planning_dashboard.html', context)
 
-
+@login_required
 @require_POST
 def create_shipment(request):
     ref = request.POST.get('reference')
@@ -209,7 +212,7 @@ def create_shipment(request):
 
     return redirect('forecast:dashboard')
 
-
+@login_required
 @require_POST
 def edit_shipment(request, pk):
     shipment = get_object_or_404(OutboundShipment, pk=pk)
@@ -236,7 +239,7 @@ def edit_shipment(request, pk):
 
     return redirect('forecast:dashboard')
 
-
+@login_required
 def sales_forecast(request):
     """
     Unified View with Dynamic KPIs based on filtered results and Pagination.
@@ -456,6 +459,7 @@ def sales_forecast(request):
 
     return response
 
+@login_required
 @require_POST
 def allocate_demand(request, pk):
     allocate_qty = request.POST.get('allocate_qty')
@@ -473,6 +477,7 @@ def allocate_demand(request, pk):
 
     return redirect('forecast:sales_forecast')
 
+@login_required
 def plan_detail(request, pk):
     plan = get_object_or_404(ForecastPlan, pk=pk)
     if request.method == 'POST':
@@ -492,13 +497,14 @@ def plan_detail(request, pk):
 
     return render(request, 'forecast/plan_detail.html', {'plan': plan})
 
-
+@login_required
 def delete_plan(request, pk):
     plan = get_object_or_404(ForecastPlan, pk=pk)
     plan.delete()
     messages.success(request, "Plan deleted.")
     return redirect('forecast:dashboard')
 
+@login_required
 def refresh_plan(request, pk):
     """
     Regenerates the entire plan for the specific month.
@@ -516,6 +522,7 @@ def refresh_plan(request, pk):
 
     return redirect('forecast:planning_dashboard')
 
+@login_required
 def refresh_entry(request, pk):
     """
     Recalculates MRP for a specific entry row.

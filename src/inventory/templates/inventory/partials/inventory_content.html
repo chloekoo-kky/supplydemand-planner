@@ -383,21 +383,36 @@
                                     </span>
                                 </div>
 
+
                                 <div class="flex justify-between items-center text-xs">
-                                    <span class="text-slate-500">Stock @ Arrival</span>
+                                    <span class="text-slate-500">Proj. Stock @ ETA</span>
                                     <div class="flex items-center gap-1.5">
                                         <span class="font-bold text-slate-700">
                                             {{ product.calc_projected_safety|floatformat:0 }}
                                         </span>
+                                        {# [UPDATED] Now showing Days Until Runout based on actual orders #}
                                         <span class="font-bold
-                                            {% if product.calc_cover_at_lt_days < 0 %} text-red-600
-                                            {% elif product.calc_cover_at_lt_days < product.safety_stock_days %} text-amber-600
+                                            {% if product.days_until_runout is not None and product.days_until_runout < 0 %} text-red-600
+                                            {% elif product.days_until_runout is not None and product.days_until_runout < product.safety_stock_days %} text-amber-600
                                             {% else %} text-emerald-600 {% endif %}">
-                                            ({{ product.calc_cover_at_lt_days|floatformat:0 }}d)
+                                            ({% if product.days_until_runout is not None %}{{ product.days_until_runout }}d{% else %}--{% endif %})
                                         </span>
                                     </div>
                                 </div>
 
+                                {# [NEW] Next line: Daily Usage & Static Coverage #}
+                                <div class="flex justify-between items-center text-xs">
+                                    <span class="text-slate-500">Daily Use / Cover</span>
+                                    <span class="font-bold text-slate-700">
+                                        {{ product.estimated_daily_usage|floatformat:1 }}
+                                        <span class="font-normal text-slate-400 mx-1">|</span>
+                                        {% if product.stock_coverage_days < 900 %}
+                                            {{ product.stock_coverage_days|floatformat:0 }}d
+                                        {% else %}
+                                            ∞
+                                        {% endif %}
+                                    </span>
+                                </div>
 
 
                             </div>
@@ -608,7 +623,10 @@
         <div class="px-5 py-4 border-b border-gray-100 flex justify-between items-center bg-gray-50 rounded-t-lg">
             <div>
                 <h3 class="text-lg font-bold text-gray-800">Stock Analysis</h3>
-                <p class="text-xs text-gray-500 mt-0.5" id="da_modal_sku">SKU: ...</p>
+                <div class="flex flex-col mt-1">
+                    <span class="text-xs font-bold text-gray-800" id="da_modal_sku">SKU: ...</span>
+                    <span class="text-xs text-gray-500" id="da_modal_desc">...</span>
+                </div>
             </div>
             <button onclick="closeDemandModal()" class="text-gray-400 hover:text-gray-600">
                 <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
@@ -620,8 +638,19 @@
             <div>
                 <div class="flex justify-between items-end mb-2">
                     <h4 class="text-sm font-bold text-gray-700 uppercase tracking-wide">1. Usage During Lead Time</h4>
-                    <span class="text-xs text-gray-500">ETA: <span id="da_modal_eta" class="font-mono font-bold text-gray-800">...</span></span>
                 </div>
+
+                <div class="flex justify-between items-center text-sm text-gray-500 mb-2 bg-gray-50 p-2 rounded border border-gray-100">
+                    <div>
+                        Lead Time: <span id="da_modal_lt" class="font-mono font-bold text-gray-800">...</span> days
+                        <span class="mx-2 text-gray-300">|</span>
+                        ETA: <span id="da_modal_eta" class="font-mono font-bold text-gray-800">...</span>
+                    </div>
+                    <div>
+                        Current Stock: <span id="da_modal_stock" class="font-mono font-bold text-gray-800">...</span>
+                    </div>
+                </div>
+
                 <div class="bg-white border border-gray-200 rounded-md overflow-hidden">
                     <table class="min-w-full divide-y divide-gray-200">
                         <thead class="bg-gray-50">
@@ -629,20 +658,20 @@
                                 <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Order</th>
                                 <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Date</th>
                                 <th class="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase">Qty</th>
+                                <th class="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase">Balance</th>
                             </tr>
                         </thead>
                         <tbody id="da_lt_body" class="bg-white divide-y divide-gray-100 text-xs">
-                            </tbody>
+                        </tbody>
                     </table>
                 </div>
             </div>
 
             <div>
-                 <div class="flex justify-between items-end mb-2">
+                 <div class="flex justify-between items-end mb-0">
                     <h4 class="text-sm font-bold text-gray-700 uppercase tracking-wide">2. Stock Run-out Projection</h4>
-                    <span class="text-xs text-gray-500">Current Stock: <span id="da_modal_stock" class="font-mono font-bold text-gray-800">...</span></span>
                 </div>
-                <p class="text-[10px] text-gray-400 mb-2">Showing orders that consume the remaining balance:</p>
+                <p class="text-sm text-gray-400 mb-2">Showing orders that consume the remaining balance:</p>
                 <div class="bg-white border border-gray-200 rounded-md overflow-hidden">
                     <table class="min-w-full divide-y divide-gray-200">
                         <thead class="bg-gray-50">
@@ -1395,13 +1424,24 @@
         document.getElementById('da_lt_body').innerHTML = '<tr><td colspan="3" class="px-3 py-4 text-center text-gray-400">Loading data...</td></tr>';
         document.getElementById('da_ro_body').innerHTML = '<tr><td colspan="4" class="px-3 py-4 text-center text-gray-400">Loading data...</td></tr>';
 
+        document.getElementById('da_modal_sku').innerText = 'SKU: ...';
+        document.getElementById('da_modal_desc').innerText = '...';
+        // Optional: Reset these too if you want
+        document.getElementById('da_modal_lt').innerText = '...';
+        document.getElementById('da_modal_eta').innerText = '...';
+
         try {
             const res = await fetch(`/inventory/api/demand-analysis/${productId}/`);
             const json = await res.json();
 
             if (json.status === 'ok') {
                 document.getElementById('da_modal_sku').innerText = `SKU: ${json.sku}`;
+                document.getElementById('da_modal_desc').innerText = json.description || '';
+
+                // UPDATED: Fill both Lead Time and ETA
+                document.getElementById('da_modal_lt').innerText = json.lead_time;
                 document.getElementById('da_modal_eta').innerText = json.eta;
+
                 document.getElementById('da_modal_stock').innerText = json.current_stock;
 
                 // 1. Fill LT Table
@@ -1409,16 +1449,26 @@
                 ltBody.innerHTML = '';
                 if (json.lt_data.length > 0) {
                     json.lt_data.forEach(row => {
+                        // Calculate Balance format
+                        const balanceFormatted = parseFloat(row.balance_after).toFixed(2);
+                        // Optional: Add red color if balance drops below zero
+                        const balClass = row.balance_after < 0 ? 'text-red-600 font-bold' : 'text-gray-500';
+
                         ltBody.innerHTML += `
                             <tr>
-                                <td class="px-3 py-2 font-medium text-gray-800">${row.order_ref}</td>
+                                <td class="px-3 py-2 font-medium text-gray-800">
+                                    <div>${row.order_ref}</div>
+                                    <div class="text-[10px] text-gray-400 font-normal truncate max-w-[200px]" title="${row.order_desc || ''}">${row.order_desc || ''}</div>
+                                </td>
                                 <td class="px-3 py-2 text-gray-500">${row.date}</td>
                                 <td class="px-3 py-2 text-right font-bold text-gray-700">${row.qty}</td>
+                                <td class="px-3 py-2 text-right ${balClass}">${balanceFormatted}</td>
                             </tr>
                         `;
                     });
                 } else {
-                    ltBody.innerHTML = '<tr><td colspan="3" class="px-3 py-2 text-center text-gray-400 italic">No usage during Lead Time.</td></tr>';
+                    // Update colspan to 4
+                    ltBody.innerHTML = '<tr><td colspan="4" class="px-3 py-2 text-center text-gray-400 italic">No usage during Lead Time.</td></tr>';
                 }
 
                 // 2. Fill Run-out Table
@@ -1428,12 +1478,18 @@
                     json.run_out_data.forEach(row => {
                         const rowClass = row.is_breaker ? 'bg-red-50' : '';
                         const balClass = row.is_breaker ? 'text-red-600 font-bold' : 'text-gray-500';
+                        const balanceFormatted = parseFloat(row.balance_after).toFixed(2);
+
+                        // UPDATED: Added row.order_desc for consistency
                         roBody.innerHTML += `
                             <tr class="${rowClass}">
-                                <td class="px-3 py-2 font-medium text-gray-800">${row.order_ref}</td>
+                                <td class="px-3 py-2 font-medium text-gray-800">
+                                    <div>${row.order_ref}</div>
+                                    <div class="text-[12px] text-gray-500 font-normal truncate max-w-[200px]" title="${row.order_desc || ''}">${row.order_desc || ''}</div>
+                                </td>
                                 <td class="px-3 py-2 text-gray-500">${row.date}</td>
                                 <td class="px-3 py-2 text-right font-bold text-gray-700">${row.qty}</td>
-                                <td class="px-3 py-2 text-right ${balClass}">${row.balance_after}</td>
+                                <td class="px-3 py-2 text-right ${balClass}">${balanceFormatted}</td>
                             </tr>
                         `;
                     });

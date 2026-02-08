@@ -4,6 +4,7 @@ import re
 import csv
 import pandas as pd
 from django.http import HttpResponse
+from django.contrib.auth.decorators import login_required
 
 from django.db.models import (
     Case, When, Sum, F, Subquery, OuterRef,
@@ -67,7 +68,7 @@ def normalize_columns(df):
 
     return df
 
-
+@login_required
 def download_import_template(request):
     response = HttpResponse(
         content_type='text/csv',
@@ -79,7 +80,7 @@ def download_import_template(request):
     writer.writerow(['EX-001', 'Example Product', 'Raw Material', '100', 'PCS', 'Shelf A-01', '10', '5.00'])
     return response
 
-
+@login_required
 def inventory_list(request, nature_code=None):
     nature_code = nature_code.upper() if nature_code else 'RAW'
 
@@ -207,6 +208,16 @@ def inventory_list(request, nature_code=None):
                 runout_date = d['date']
                 break
 
+        if runout_date:
+            p.days_until_runout = (runout_date - today).days
+        else:
+            p.days_until_runout = None  # Will be displayed as '--'
+
+        if daily_usage > 0:
+            p.stock_coverage_days = current_soh / daily_usage
+        else:
+            p.stock_coverage_days = 999 if current_soh > 0 else 0
+
         # --- D. Action Plan (Keep existing logic) ---
         p.mrp_status = "OK"
         p.mrp_action_msg = "No Action Needed"
@@ -322,11 +333,12 @@ def inventory_list(request, nature_code=None):
 
     return render(request, 'inventory/inventory_list.html', context)
 
+@login_required
 def product_demand_analysis(request, pk):
     """
     Returns detailed demand analysis for a specific product:
     1. Orders consuming stock during Lead Time.
-    2. Orders that will exhaust the current balance (Run-out analysis).
+    2. Orders that will exhaust the current balance (Run-out analysis), EXCLUDING those already in LT.
     """
     product = get_object_or_404(Product, pk=pk)
 
@@ -340,52 +352,56 @@ def product_demand_analysis(request, pk):
     lt_end_date = today + timedelta(days=lead_time)
 
     # 3. Fetch All Active Demands (Sorted by Date)
-    # Note: We look for active Production Orders (Draft, Confirmed, In Progress)
     active_components = ProductionComponent.objects.filter(
         component=product,
         production_order__status__in=['DRAFT', 'CONFIRMED', 'IN_PROGRESS']
-    ).select_related('production_order').order_by('production_order__start_date')
+    ).select_related('production_order', 'production_order__product').order_by('production_order__start_date')
 
     lt_usage_list = []
     run_out_list = []
 
-    # Logic: Usage in LT
-    for item in active_components:
-        ord_date = item.production_order.start_date
-        qty = float(item.quantity_required)
-
-        if ord_date <= lt_end_date:
-            lt_usage_list.append({
-                'order_ref': item.production_order.order_number,
-                'date': ord_date.strftime('%Y-%m-%d'),
-                'qty': qty,
-                'status': item.production_order.status
-            })
-
-    # Logic: Run-out Analysis
-    # We simulate stock depletion starting from NOW
+    # Unified Logic: Calculate running balance through time
     running_balance = current_soh
 
     for item in active_components:
-        if running_balance <= 0:
-            # If we are already out of stock, we stop listing (or list the first one that is missed)
-            # User request: "orders that will finished the balance" -> Stop when balance is gone.
-            break
-
         ord_date = item.production_order.start_date
         qty = float(item.quantity_required)
 
-        new_balance = running_balance - qty
+        # Get FG Description
+        fg_desc = item.production_order.product.description if item.production_order.product else "Unknown Product"
 
-        run_out_list.append({
-            'order_ref': item.production_order.order_number,
-            'date': ord_date.strftime('%Y-%m-%d'),
-            'qty': qty,
-            'balance_after': max(0, new_balance), # Show 0 if it goes negative
-            'is_breaker': (new_balance < 0) # Flag if this is the order that causes shortage
-        })
+        if ord_date <= lt_end_date:
+            # === Table 1: Usage During Lead Time ===
+            # Always list these requirements so user knows what is needed immediately.
+            running_balance -= qty
 
-        running_balance = new_balance
+            lt_usage_list.append({
+                'order_ref': item.production_order.order_number,
+                'order_desc': fg_desc,
+                'date': ord_date.strftime('%Y-%m-%d'),
+                'qty': qty,
+                'status': item.production_order.status,
+                'balance_after': running_balance # Display actual balance (can be negative here to show immediate shortage)
+            })
+        else:
+            # === Table 2: Run-out Projection (Post-Lead Time) ===
+            # If stock is already exhausted by LT orders, we stop projecting (Table 2 is empty)
+            if running_balance <= 0:
+                break
+
+            new_balance = running_balance - qty
+            is_breaker = (new_balance < 0)
+
+            run_out_list.append({
+                'order_ref': item.production_order.order_number,
+                'order_desc': fg_desc,
+                'date': ord_date.strftime('%Y-%m-%d'),
+                'qty': qty,
+                'balance_after': max(0, new_balance), # Floor at 0 for visual clarity in projection
+                'is_breaker': is_breaker
+            })
+
+            running_balance = new_balance
 
     return JsonResponse({
         'status': 'ok',
@@ -398,6 +414,7 @@ def product_demand_analysis(request, pk):
         'run_out_data': run_out_list
     })
 
+@login_required
 @csrf_exempt
 def group_create(request):
     if request.method == 'POST':
@@ -409,6 +426,7 @@ def group_create(request):
             return JsonResponse({'status': 'ok', 'group_id': group.id})
     return JsonResponse({'status': 'error'}, status=400)
 
+@login_required
 @csrf_exempt
 def group_rename(request, group_id):
     if request.method == 'POST':
@@ -419,6 +437,7 @@ def group_rename(request, group_id):
         return JsonResponse({'status': 'ok'})
     return JsonResponse({'status': 'error'}, status=400)
 
+@login_required
 @csrf_exempt
 def group_delete(request, group_id):
     if request.method == 'POST':
@@ -427,6 +446,7 @@ def group_delete(request, group_id):
         return JsonResponse({'status': 'ok'})
     return JsonResponse({'status': 'error'}, status=400)
 
+@login_required
 @csrf_exempt
 def product_move(request, product_id):
     if request.method == 'POST':
@@ -442,6 +462,7 @@ def product_move(request, product_id):
         return JsonResponse({'status': 'ok'})
     return JsonResponse({'status': 'error'}, status=400)
 
+@login_required
 @csrf_exempt
 def product_reorder(request):
     if request.method == 'POST':
@@ -452,9 +473,11 @@ def product_reorder(request):
         return JsonResponse({'status': 'ok'})
     return JsonResponse({'status': 'error'})
 
+@login_required
 def load_import_modal(request):
     return render(request, 'inventory/partials/import_modal_step1_upload.html')
 
+@login_required
 def process_import_file(request):
     if request.method == "POST" and request.FILES.get('file_upload'):
         try:
@@ -600,6 +623,7 @@ def process_import_file(request):
     return JsonResponse({'success': False, 'message': 'Invalid Request'})
 
 
+@login_required
 @csrf_exempt
 def product_delete(request, product_id):
     if request.method == 'POST':
@@ -608,6 +632,7 @@ def product_delete(request, product_id):
         return JsonResponse({'status': 'ok'})
     return JsonResponse({'status': 'error'}, status=400)
 
+@login_required
 @csrf_exempt
 def finalize_import(request):
     if request.method == "POST":
@@ -765,7 +790,7 @@ def finalize_import(request):
 
     return JsonResponse({'success': False, 'message': 'POST required'})
 
-
+@login_required
 @csrf_exempt
 def product_update(request, pk):
     if request.method == 'POST':
@@ -797,6 +822,7 @@ def product_update(request, pk):
             return JsonResponse({'status': 'error', 'message': str(e)}, status=400)
     return JsonResponse({'status': 'error'}, status=405)
 
+@login_required
 @csrf_exempt
 def category_rename(request):
     if request.method == 'POST':
@@ -816,7 +842,7 @@ def category_rename(request):
             return JsonResponse({'status': 'error', 'message': str(e)}, status=400)
     return JsonResponse({'status': 'error'}, status=400)
 
-
+@login_required
 @csrf_exempt
 def category_delete(request):
     if request.method == 'POST':
@@ -835,6 +861,7 @@ def category_delete(request):
              return JsonResponse({'status': 'error', 'message': str(e)}, status=400)
     return JsonResponse({'status': 'error'}, status=400)
 
+@login_required
 def bom_list(request, product_id):
     try:
         boms = BillOfMaterial.objects.filter(product_id=product_id).select_related('component').order_by('component__sku')
@@ -852,6 +879,7 @@ def bom_list(request, product_id):
     except Exception as e:
         return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
 
+@login_required
 @csrf_exempt
 def bom_add(request):
     if request.method == 'POST':
@@ -882,6 +910,7 @@ def bom_add(request):
             return JsonResponse({'status': 'error', 'message': str(e)}, status=400)
     return JsonResponse({'status': 'error'}, status=400)
 
+@login_required
 @csrf_exempt
 def bom_update(request, bom_id):
     if request.method == 'POST':
@@ -896,6 +925,7 @@ def bom_update(request, bom_id):
             return JsonResponse({'status': 'error', 'message': str(e)}, status=400)
     return JsonResponse({'status': 'error'}, status=400)
 
+@login_required
 @csrf_exempt
 def bom_delete(request, bom_id):
     if request.method == 'POST':
@@ -907,6 +937,7 @@ def bom_delete(request, bom_id):
             return JsonResponse({'status': 'error', 'message': str(e)}, status=400)
     return JsonResponse({'status': 'error'}, status=400)
 
+@login_required
 def product_search_components(request):
     query = request.GET.get('q', '').strip()
     if len(query) < 2:
@@ -924,11 +955,12 @@ def product_search_components(request):
     } for p in products]
     return JsonResponse({'results': results})
 
-
+@login_required
 def load_bom_import_modal(request):
     """Step 1: Render the file upload form for BOMs."""
     return render(request, 'inventory/partials/import_bom_modal_step1.html')
 
+@login_required
 def process_bom_import_file(request):
     """Step 2: Read file, match Products, and show preview."""
     if request.method == "POST" and request.FILES.get('file_upload'):
@@ -1013,6 +1045,7 @@ def process_bom_import_file(request):
 
     return JsonResponse({'success': False, 'message': 'Invalid request'})
 
+@login_required
 @csrf_exempt
 def finalize_bom_import(request):
     """Step 3: Save valid BOM connections."""

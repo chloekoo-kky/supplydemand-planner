@@ -15,25 +15,29 @@ from production.models import ProductionOrder, ProductionComponent
 from production.services import calculate_requirements, lock_stock_for_order, complete_production
 
 class Command(BaseCommand):
-    help = 'Reset Data: Aligns Simulation Date to NOW, includes Future Actuals, and keeps demand < 1000.'
+    help = 'Reset Data: Aligns Simulation Date to NOW. Use --clear-only to wipe data.'
 
-    def handle(self, *args, **kwargs):
-        self.stdout.write(self.style.WARNING('Initializing Demo Data...'))
+    def add_arguments(self, parser):
+        parser.add_argument(
+            '--clear-only',
+            action='store_true',
+            help='Delete all data but do not repopulate it',
+        )
 
-        # === DATE ALIGNMENT FIX ===
-        # Set Simulation Date to TODAY so that UI operations (which use today)
-        # match the inventory snapshots.
+    def handle(self, *args, **options):
+        # === DATE ALIGNMENT ===
         today = timezone.now().date()
         self.SIMULATION_DATE = today
-
-        # Start history 6 months ago
         self.START_DATE = today - relativedelta(months=6)
-
-        self.stdout.write(f"📅 Simulation Date (Today): {self.SIMULATION_DATE}")
-        self.stdout.write(f"📅 History Start Date: {self.START_DATE}")
 
         with transaction.atomic():
             self.clear_data()
+
+            if options['clear_only']:
+                self.stdout.write(self.style.SUCCESS('🧹 Data cleared successfully. Database is now empty.'))
+                return
+
+            self.stdout.write(self.style.WARNING('Initializing Demo Data...'))
             self.create_products()
             self.create_bom()
             self.create_inventory()
