@@ -4,13 +4,13 @@ services:
       context: .
       dockerfile: Dockerfile
     # Overrides Dockerfile CMD to use dev server
-    command: python manage.py runserver 0.0.0.0:8000
+    command: python manage.py runserver 0.0.0.0:8432
     volumes:
       - ./src:/app             # Hot reloading
       - static_volume:/vol/web/static
       - media_volume:/vol/web/media
     ports:
-      - "8432:8000"
+      - "8432:8432"
     env_file:
       - .env
     depends_on:
@@ -35,7 +35,7 @@ services:
       timeout: 5s
       retries: 5
     ports:
-      - "5432:5432" # Open for local tools (DBeaver etc)
+      - "8432:8432" # Open for local tools (DBeaver etc)
 
   redis:
     image: redis:7-alpine
