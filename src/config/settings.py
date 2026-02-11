@@ -6,7 +6,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 
 # --- SECURITY: Get from Environment or Fail ---
 # In Dev, we can fallback to a dummy key, but in Prod this comes from .env
-SECRET_KEY = os.environ.get('DJANGO_SECRET_KEY', 'django-insecure-dev-key-change-me')
+SECRET_KEY = os.environ.get('DJANGO_SECRET_KEY')
 
 # Default to False (Production mode) if not specified
 DEBUG = os.environ.get('DJANGO_DEBUG', 'False') == 'True'
