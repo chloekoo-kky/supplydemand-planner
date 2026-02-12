@@ -1,6 +1,6 @@
 # --- 核心框架 ---
 Django>=5.0,<5.2   # 建议直接上 5.x，利用其 GeneratedField 处理库存计算
-psycopg2-binary    # 数据库驱动
+psycopg2    # 数据库驱动
 gunicorn           # 生产环境服务器
 
 # --- 数据处理 (核心) ---

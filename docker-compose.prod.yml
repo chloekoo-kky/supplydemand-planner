@@ -3,8 +3,6 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    # Uses default CMD (gunicorn) from Dockerfile
-    # NO volume mount for ./src (Code is baked into image)
     volumes:
       - static_volume:/vol/web/static
       - media_volume:/vol/web/media
@@ -16,15 +14,18 @@ services:
       redis:
         condition: service_started
 
-  # New Nginx Service
   proxy:
     build:
       context: ./proxy
     ports:
-      - "80:80"  # Expose standard web port (Add 443 here if using SSL certs)
+      - "80:80"   # HTTP (for redirect)
+      - "7749:443" # HTTPS (SSL)
     volumes:
       - static_volume:/vol/web/static
       - media_volume:/vol/web/media
+      # MOUNT CERTIFICATES HERE:
+      # Format: ./path_on_host:/path_in_container:ro (read-only)
+      - ./certs:/etc/nginx/certs:ro
     depends_on:
       - app
 
@@ -33,13 +34,12 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
     env_file:
-      - .env.prod # Use secure passwords
+      - .env.prod
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 5s
       timeout: 5s
       retries: 5
-    # Port 5432 REMOVED for security (Internal only)
 
   redis:
     image: redis:7-alpine
