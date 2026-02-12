@@ -10,7 +10,7 @@ services:
       - static_volume:/vol/web/static
       - media_volume:/vol/web/media
     ports:
-      - "7749:8000"
+      - "7749:7749"
     env_file:
       - .env
     depends_on:
