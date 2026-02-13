@@ -24,32 +24,33 @@ from .services import (
 )
 
 
+
 @login_required
 def production_dashboard(request):
     """
     Production Overview with Time-Phased Inventory Logic (APS Level 1).
     Includes Search, Date Filtering, Sorting, and Pagination.
     """
-    # === 1. 获取筛选与排序参数 ===
+    # === 1. Fetch Filter & Sort Params ===
     search_query = request.GET.get('search', '').strip()
     date_from = request.GET.get('date_from', '')
     date_to = request.GET.get('date_to', '')
     status_filter = request.GET.get('status', '')
 
     # [NEW] Sorting & Pagination params
-    sort_by = request.GET.get('sort', 'start_date') # 默认按开始日期
+    sort_by = request.GET.get('sort', 'start_date')
     direction = request.GET.get('direction', 'asc')
     page_num = request.GET.get('page', 1)
 
-    # === 2. 基础 QuerySet ===
-    # 注意：为了库存计算逻辑(FIFO)正确，这里必须先按时间排序获取数据
+    # === 2. Base QuerySet ===
+    # We still order by start_date for the FIFO logic
     orders = ProductionOrder.objects.select_related('product') \
                                     .prefetch_related('components__component') \
                                     .all().order_by('start_date', 'created_at')
 
     fgs = Product.objects.filter(nature='FG').order_by('sku')
 
-    # === 3. 应用筛选 ===
+    # === 3. Apply Filters ===
     if search_query:
         orders = orders.filter(
             Q(order_number__icontains=search_query) |
@@ -66,9 +67,18 @@ def production_dashboard(request):
     if status_filter:
         orders = orders.filter(status=status_filter)
 
-    # === 4. 构建库存池 (Inventory Pool) ===
-    # ... (保持原有逻辑不变，这是核心算法) ...
+    # === [CRITICAL PERFORMANCE FIX] ===
+    # If the user is NOT searching or filtering by specific dates/status,
+    # automatically hide 'COMPLETED' and 'CANCELLED' orders.
+    # This prevents the Python loop from processing thousands of old historical records.
+    elif not (search_query or date_from or date_to):
+        orders = orders.exclude(status__in=['COMPLETED', 'CANCELLED'])
+
+    # === 4. Inventory Pool (Optimized) ===
+    # Now 'orders' only contains active items (unless filtered otherwise), making this loop fast.
     comp_product_ids = set()
+
+    # Only loop through the filtered queryset, not the entire DB
     for o in orders:
         if o.status in ['DRAFT', 'CONFIRMED', 'IN_PROGRESS']:
             for c in o.components.all():
@@ -77,6 +87,7 @@ def production_dashboard(request):
     inventory_pool = {}
 
     if comp_product_ids:
+        # Fetch latest snapshots for relevant components
         sq = InventorySnapshot.objects.filter(product=OuterRef('product')).order_by('-snapshot_date')
         snapshots = InventorySnapshot.objects.filter(
             pk=Subquery(sq.values('pk')[:1]),
@@ -85,7 +96,8 @@ def production_dashboard(request):
         for snap in snapshots:
             inventory_pool[snap.product_id] = float(snap.quantity_on_hand)
 
-    # === 5. Time-Phased Logic 计算 (必须在分页前完成) ===
+    # === 5. Time-Phased Logic Calculation ===
+    # This loop is now efficient because 'orders' is small (Active only)
     for order in orders:
         if order.status in ['DRAFT', 'CONFIRMED', 'IN_PROGRESS']:
             for comp in order.components.all():
@@ -104,16 +116,16 @@ def production_dashboard(request):
                     comp.shortage = required - current_balance
                     inventory_pool[pid] = 0
         else:
+            # For Completed/Cancelled (if viewed via search/filter), just zero out display
             for comp in order.components.all():
                 comp.is_enough = True
                 comp.display_stock = 0
 
-    # 转换为列表，准备排序和分页
+    # Convert to list for sorting/pagination
     orders_list = list(orders)
     total_count = len(orders_list)
 
-    # === 6. [NEW] 应用显示排序 (Display Sorting) ===
-    # 逻辑计算完后，再根据用户喜好重新排列显示顺序
+    # === 6. Display Sorting ===
     reverse_sort = (direction == 'desc')
 
     def sort_helper(o):
@@ -122,12 +134,12 @@ def production_dashboard(request):
         if sort_by == 'status': return o.status
         if sort_by == 'quantity': return o.quantity
         if sort_by == 'start_date': return o.start_date
-        return o.start_date # default
+        return o.start_date
 
     orders_list.sort(key=sort_helper, reverse=reverse_sort)
 
-    # === 7. [NEW] 分页 (Pagination) ===
-    paginator = Paginator(orders_list, 10) # 每页 10 条
+    # === 7. Pagination ===
+    paginator = Paginator(orders_list, 10)
     try:
         page_obj = paginator.page(page_num)
     except PageNotAnInteger:
@@ -136,12 +148,11 @@ def production_dashboard(request):
         page_obj = paginator.page(paginator.num_pages)
 
     context = {
-        'orders': page_obj, # 现在传递的是 Page 对象
+        'orders': page_obj,
         'paginator': paginator,
-        'total_orders': total_count, # 传递总数用于显示
+        'total_orders': total_count,
         'fgs': fgs,
         'page_title': 'Production Orders',
-        # 传递当前状态回前端
         'current_search': search_query,
         'current_date_from': date_from,
         'current_date_to': date_to,
@@ -154,6 +165,7 @@ def production_dashboard(request):
         return render(request, 'production/partials/dashboard_content.html', context)
 
     return render(request, 'production/production_dashboard.html', context)
+
 
 @login_required
 def production_dashboard_impl(request):

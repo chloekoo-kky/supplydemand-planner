@@ -20,7 +20,7 @@ from django.utils import timezone
 from django.utils.text import slugify
 from collections import defaultdict
 from datetime import timedelta
-from django.core.paginator import Paginator
+from django.core.paginator import Paginator, EmptyPage, PageNotAnInteger
 
 from rapidfuzz import process, fuzz
 from decimal import Decimal
@@ -82,15 +82,21 @@ def download_import_template(request):
     return response
 
 @login_required
+@login_required
 def inventory_list(request, nature_code=None):
     nature_code = nature_code.upper() if nature_code else 'RAW'
 
-    # Status Definitions
+    # === 1. Active Group/Tab Filter ===
+    # We now check which tab is active via URL (e.g., ?group=5 or ?group=ALL)
+    # Default to 'ALL' if not specified
+    active_group_str = request.GET.get('group', 'ALL')
+
+    # Status Definitions (Keep existing logic)
     STATUS_HARD_WIP = ['CONFIRMED', 'IN_PROGRESS']
     STATUS_SOFT_DRAFT = ['DRAFT']
     STATUS_ACTIVE = STATUS_HARD_WIP + STATUS_SOFT_DRAFT
 
-    # --- 1. Base QuerySet ---
+    # --- 2. Base QuerySet (Keep existing logic) ---
     latest_stock = InventorySnapshot.objects.filter(
         product=OuterRef('pk')
     ).order_by('-snapshot_date')
@@ -132,7 +138,7 @@ def inventory_list(request, nature_code=None):
         )
     )
 
-    # --- Search & Filter ---
+    # --- 3. Apply Filters BEFORE Pagination ---
     search_query = request.GET.get('search', '').strip()
     category_filter = request.GET.get('category', '').strip()
 
@@ -146,17 +152,38 @@ def inventory_list(request, nature_code=None):
     if category_filter:
         all_products_qs = all_products_qs.filter(category=category_filter)
 
+    # [CRITICAL] Apply Group Filter here (Server-side Filtering)
+    if active_group_str != 'ALL':
+        try:
+            group_id = int(active_group_str)
+            all_products_qs = all_products_qs.filter(group_id=group_id)
+        except (ValueError, TypeError):
+            pass # Invalid ID, just show all or empty
+
     # Sort
     all_products_qs = all_products_qs.order_by('-is_temporary', 'sort_order', 'sku')
 
-    # === MRP / Purchasing Action Plan ===
-    products_list = list(all_products_qs)
+    # --- 4. Pagination (The Performance Fix) ---
+    # Only fetch 25 items for the current page
+    paginator = Paginator(all_products_qs, 25)
+    page_number = request.GET.get('page')
+    try:
+        page_obj = paginator.page(page_number)
+    except PageNotAnInteger:
+        page_obj = paginator.page(1)
+    except EmptyPage:
+        page_obj = paginator.page(paginator.num_pages)
+
+    # Convert the PAGE of objects to a list for MRP calculation
+    # We now only loop through 25 items instead of 2000+
+    products_list = list(page_obj.object_list)
     today = timezone.now().date()
 
-    # 1. Batch fetch demand (Demand Map)
+    # --- 5. MRP / Purchasing Action Plan (Optimized) ---
     demand_map = defaultdict(list)
 
     if nature_code in ['RAW', 'PKG']:
+        # Note: We still query active components efficiently
         active_components = ProductionComponent.objects.filter(
             production_order__status__in=STATUS_ACTIVE,
             component__nature=nature_code
@@ -172,7 +199,7 @@ def inventory_list(request, nature_code=None):
                 'qty': float(item['quantity_required'])
             })
 
-    # 2. Iterate and Calculate Metrics (MRP Logic)
+    # Iterate ONLY the 25 items
     for p in products_list:
         lead_time = p.lead_time_days
         lt_end_date = today + timedelta(days=lead_time)
@@ -190,7 +217,6 @@ def inventory_list(request, nature_code=None):
         p.calc_usage_in_lt = usage_in_lt
         p.calc_projected_safety = current_soh - usage_in_lt
 
-        # Days of Cover at Arrival
         if daily_usage > 0:
             p.calc_cover_at_lt_days = p.calc_projected_safety / daily_usage
         else:
@@ -243,7 +269,6 @@ def inventory_list(request, nature_code=None):
                 p.mrp_action_msg = f"Order by {must_order_by.strftime('%d/%m')}"
                 p.mrp_color = "bg-blue-50 text-blue-700 border-blue-200"
         else:
-            # Fallback based on daily usage / coverage
             daily = float(p.estimated_daily_usage or 0)
             if daily > 0 and temp_balance > 0:
                 days_left = temp_balance / daily
@@ -254,12 +279,14 @@ def inventory_list(request, nature_code=None):
                 else:
                      p.mrp_action_msg = f"Safe for {int(days_left)} days"
 
-    # === End Logic ===
+    # --- 6. Build Context for Template ---
+    # We preserve the 'tabs_data' structure roughly so the template headers still work,
+    # BUT we only populate 'assets' for the ACTIVE tab.
+    # The inactive tabs get empty lists (lightweight).
 
     all_categories = Product.objects.filter(nature=nature_code).values_list('category', flat=True).distinct().order_by('category')
     groups = ProductGroup.objects.filter(nature=nature_code)
 
-    # --- Build Tabs Data ---
     tabs_data = []
 
     # 1. All Tab
@@ -267,17 +294,19 @@ def inventory_list(request, nature_code=None):
         'group_id': 'ALL',
         'name': f'All {nature_code}',
         'is_all': True,
-        'assets': products_list
+        # Only populate assets if this is the active tab
+        'assets': products_list if active_group_str == 'ALL' else []
     })
 
     # 2. Group Tabs
     for group in groups:
-        group_assets = [p for p in products_list if p.group_id == group.id]
+        is_active = (str(group.id) == str(active_group_str))
         tabs_data.append({
             'group_id': group.id,
             'name': group.name,
             'is_all': False,
-            'assets': group_assets
+            # Only populate assets if this is the active tab
+            'assets': products_list if is_active else []
         })
 
     titles = {'RAW': 'Raw Materials', 'PKG': 'Packaging', 'FG': 'Finished Goods'}
@@ -289,6 +318,10 @@ def inventory_list(request, nature_code=None):
         'all_categories': all_categories,
         'current_search': search_query,
         'current_category': category_filter,
+        # Pass the paginator and current active group for the template to use
+        'paginator': paginator,
+        'page_obj': page_obj,
+        'active_group_id': active_group_str
     }
 
     if request.headers.get('x-requested-with') == 'XMLHttpRequest':
