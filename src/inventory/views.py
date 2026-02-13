@@ -85,12 +85,12 @@ def download_import_template(request):
 def inventory_list(request, nature_code=None):
     nature_code = nature_code.upper() if nature_code else 'RAW'
 
-    # 定义状态分类
+    # Status Definitions
     STATUS_HARD_WIP = ['CONFIRMED', 'IN_PROGRESS']
     STATUS_SOFT_DRAFT = ['DRAFT']
     STATUS_ACTIVE = STATUS_HARD_WIP + STATUS_SOFT_DRAFT
 
-    # --- 1. 基础 QuerySet ---
+    # --- 1. Base QuerySet ---
     latest_stock = InventorySnapshot.objects.filter(
         product=OuterRef('pk')
     ).order_by('-snapshot_date')
@@ -118,7 +118,7 @@ def inventory_list(request, nature_code=None):
         qty_rm_draft=Coalesce(Subquery(rm_draft_qs[:1]), Value(0, output_field=DecimalField())),
     )
 
-    # 计算 Net Available & Projected Stock
+    # Calculate Net Available & Projected Stock
     all_products_qs = all_products_qs.annotate(
         net_available=Case(
             When(nature='FG', then=F('qty_on_hand') - F('qty_reserved') + F('qty_fg_wip')),
@@ -126,14 +126,13 @@ def inventory_list(request, nature_code=None):
             output_field=DecimalField()
         ),
         projected_stock=Case(
-            # UPDATED LINE: Subtract qty_reserved for FG to account for allocated sales orders
             When(nature='FG', then=F('qty_on_hand') - F('qty_reserved') + F('qty_fg_wip') + F('qty_fg_draft')),
             default=F('qty_on_hand') - F('qty_reserved') - F('qty_rm_draft'),
             output_field=DecimalField()
         )
     )
 
-    # --- 搜索 & 筛选逻辑 ---
+    # --- Search & Filter ---
     search_query = request.GET.get('search', '').strip()
     category_filter = request.GET.get('category', '').strip()
 
@@ -147,14 +146,14 @@ def inventory_list(request, nature_code=None):
     if category_filter:
         all_products_qs = all_products_qs.filter(category=category_filter)
 
-    # 排序
+    # Sort
     all_products_qs = all_products_qs.order_by('-is_temporary', 'sort_order', 'sku')
 
-    # === NEW LOGIC: MRP / Purchasing Action Plan ===
+    # === MRP / Purchasing Action Plan ===
     products_list = list(all_products_qs)
     today = timezone.now().date()
 
-    # 1. 批量预取需求 (Demand Map)
+    # 1. Batch fetch demand (Demand Map)
     demand_map = defaultdict(list)
 
     if nature_code in ['RAW', 'PKG']:
@@ -173,34 +172,31 @@ def inventory_list(request, nature_code=None):
                 'qty': float(item['quantity_required'])
             })
 
-    # 2. 遍历产品进行计算 (MRP Logic)
+    # 2. Iterate and Calculate Metrics (MRP Logic)
     for p in products_list:
-        # --- A. Basic Data ---
         lead_time = p.lead_time_days
         lt_end_date = today + timedelta(days=lead_time)
         current_soh = float(p.qty_on_hand or 0)
-
-        # [NEW] Calculated Metrics for Decision Making
         daily_usage = float(p.estimated_daily_usage or 0)
+
         p.lt_arrival_date = lt_end_date
         p.calc_safety_target_qty = daily_usage * p.safety_stock_days
 
         demands = demand_map.get(p.id, [])
         demands.sort(key=lambda x: x['date'])
 
-        # --- B. Calculate LT Usage & Projected Stock ---
+        # Calculate LT Usage & Projected Stock
         usage_in_lt = sum(d['qty'] for d in demands if d['date'] <= lt_end_date)
         p.calc_usage_in_lt = usage_in_lt
         p.calc_projected_safety = current_soh - usage_in_lt
 
-        # [NEW] Days of Cover at Arrival (The critical decision metric)
-        # "When the boat arrives, how many days of stock will I have left?"
+        # Days of Cover at Arrival
         if daily_usage > 0:
             p.calc_cover_at_lt_days = p.calc_projected_safety / daily_usage
         else:
             p.calc_cover_at_lt_days = 999 if p.calc_projected_safety > 0 else 0
 
-        # --- C. Run-out Date Logic (Keep existing logic) ---
+        # Run-out Date Logic
         runout_date = None
         temp_balance = current_soh
         for d in demands:
@@ -212,14 +208,14 @@ def inventory_list(request, nature_code=None):
         if runout_date:
             p.days_until_runout = (runout_date - today).days
         else:
-            p.days_until_runout = None  # Will be displayed as '--'
+            p.days_until_runout = None
 
         if daily_usage > 0:
             p.stock_coverage_days = current_soh / daily_usage
         else:
             p.stock_coverage_days = 999 if current_soh > 0 else 0
 
-        # --- D. Action Plan (Keep existing logic) ---
+        # Action Plan Status
         p.mrp_status = "OK"
         p.mrp_action_msg = "No Action Needed"
         p.mrp_color = "bg-emerald-50 text-emerald-700 border-emerald-200"
@@ -227,37 +223,6 @@ def inventory_list(request, nature_code=None):
         if runout_date:
             must_order_by = runout_date - timedelta(days=lead_time)
             days_until_order = (must_order_by - today).days
-            p.mrp_runout_date = runout_date
-
-            if days_until_order < 0:
-                p.mrp_status = "URGENT"
-                p.mrp_action_msg = f"OVERDUE! Order immediately ({abs(days_until_order)} days late)"
-                p.mrp_color = "bg-red-100 text-red-800 border-red-300 animate-pulse"
-            elif days_until_order == 0:
-                p.mrp_status = "NOW"
-                p.mrp_action_msg = "Order Today"
-                p.mrp_color = "bg-red-50 text-red-700 border-red-200"
-            elif days_until_order <= 7:
-                p.mrp_status = "SOON"
-                p.mrp_action_msg = f"Order in {days_until_order} days"
-                p.mrp_color = "bg-orange-50 text-orange-700 border-orange-200"
-            else:
-                p.mrp_status = "PLAN"
-                p.mrp_action_msg = f"Order by {must_order_by.strftime('%d/%m')}"
-                p.mrp_color = "bg-blue-50 text-blue-700 border-blue-200"
-        else:
-             # Fallback to coverage based logic
-             if p.calc_cover_at_lt_days < p.safety_stock_days:
-                 # If we land below safety stock target after lead time, warn user
-                 p.mrp_status = "LOW"
-                 p.mrp_action_msg = "Below Safety Target"
-                 p.mrp_color = "bg-amber-50 text-amber-700 border-amber-200"
-
-        if runout_date:
-            # 倒推法：下单日 = 断货日 - Lead Time
-            must_order_by = runout_date - timedelta(days=lead_time)
-            days_until_order = (must_order_by - today).days
-
             p.mrp_runout_date = runout_date
             p.mrp_order_deadline = must_order_by
 
@@ -277,19 +242,16 @@ def inventory_list(request, nature_code=None):
                 p.mrp_status = "PLAN"
                 p.mrp_action_msg = f"Order by {must_order_by.strftime('%d/%m')}"
                 p.mrp_color = "bg-blue-50 text-blue-700 border-blue-200"
-
         else:
-            # 如果在已知订单范围内不断货，检查日均用量估算 (Runway)
+            # Fallback based on daily usage / coverage
             daily = float(p.estimated_daily_usage or 0)
             if daily > 0 and temp_balance > 0:
                 days_left = temp_balance / daily
-                # 如果剩下的库存撑不到 Lead Time，也需要报警
                 if days_left < lead_time:
                      p.mrp_status = "LOW"
                      p.mrp_action_msg = "Low Stock (Based on Avg Usage)"
                      p.mrp_color = "bg-amber-50 text-amber-700 border-amber-200"
                 else:
-                     # 稍微显示得更友好一些
                      p.mrp_action_msg = f"Safe for {int(days_left)} days"
 
     # === End Logic ===
@@ -297,7 +259,7 @@ def inventory_list(request, nature_code=None):
     all_categories = Product.objects.filter(nature=nature_code).values_list('category', flat=True).distinct().order_by('category')
     groups = ProductGroup.objects.filter(nature=nature_code)
 
-    # --- 构建 Tabs 数据 ---
+    # --- Build Tabs Data ---
     tabs_data = []
 
     # 1. All Tab
@@ -305,7 +267,7 @@ def inventory_list(request, nature_code=None):
         'group_id': 'ALL',
         'name': f'All {nature_code}',
         'is_all': True,
-        'assets': products_list # Pass the processed list
+        'assets': products_list
     })
 
     # 2. Group Tabs
@@ -333,6 +295,7 @@ def inventory_list(request, nature_code=None):
          return render(request, 'inventory/partials/inventory_content.html', context)
 
     return render(request, 'inventory/inventory_list.html', context)
+
 
 @login_required
 def product_demand_analysis(request, pk):

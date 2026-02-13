@@ -8,14 +8,13 @@ from django.db import transaction
 from django.utils import timezone
 from django.db.models import F
 
-from inventory.models import Product, BillOfMaterial, InventorySnapshot
+# Added ProductGroup to imports
+from inventory.models import Product, BillOfMaterial, InventorySnapshot, ProductGroup
 from forecast.models import ForecastEntry, MarketDemand, ForecastPlan, OutboundShipment
 from production.models import ProductionOrder, ProductionComponent
-# Import services to trigger the logic
-from production.services import calculate_requirements, lock_stock_for_order, complete_production
 
 class Command(BaseCommand):
-    help = 'Reset Data: Aligns Simulation Date to NOW. Use --clear-only to wipe data.'
+    help = 'Reset Data: Aligns Simulation Date to NOW with Categorized Inventory & Groups.'
 
     def add_arguments(self, parser):
         parser.add_argument(
@@ -37,15 +36,21 @@ class Command(BaseCommand):
                 self.stdout.write(self.style.SUCCESS('🧹 Data cleared successfully. Database is now empty.'))
                 return
 
-            self.stdout.write(self.style.WARNING('Initializing Demo Data...'))
+            self.stdout.write(self.style.WARNING('Initializing Data with Groups & Categories...'))
+
+            # 1. Create Groups first
+            self.create_product_groups()
+
+            # 2. Create Products linked to Groups
             self.create_products()
+
             self.create_bom()
             self.create_inventory()
             self.create_shipments()
             self.create_production_orders()
             self.create_market_demand()
 
-        self.stdout.write(self.style.SUCCESS('✅ Data reset complete! Ready for manual testing.'))
+        self.stdout.write(self.style.SUCCESS('✅ Data reset complete! Inventory is now organized by Category AND Group.'))
 
     def clear_data(self):
         self.stdout.write("Clearing old data...")
@@ -58,42 +63,87 @@ class Command(BaseCommand):
         InventorySnapshot.objects.all().delete()
         BillOfMaterial.objects.all().delete()
         Product.objects.all().delete()
+        ProductGroup.objects.all().delete()  # Clear Groups
 
-    def create_products(self):
-        self.stdout.write("Creating Products (with reduced usage)...")
-        # UPDATED: Reduced 'estimated_daily_usage' to ensure monthly demand < 1000
-        # e.g., 25 * 30 days = 750 (max)
-        products = [
-            ('FG-SYR-VAN', 'Vanilla Syrup 750ml', 'FG', 'BTL', 25, 14), # Reduced from 50
-            ('FG-SYR-HAZ', 'Hazelnut Syrup 750ml', 'FG', 'BTL', 20, 14), # Reduced from 40
-            ('FG-SAU-CAR', 'Caramel Sauce 1L', 'FG', 'BTL', 15, 14),    # Reduced from 30
-            ('FG-SAU-COC', 'Chocolate Sauce 1L', 'FG', 'BTL', 12, 14),  # Reduced from 25
-            ('FG-CON-LEM', 'Lemon Tea Concentrate 1L', 'FG', 'BTL', 28, 7), # Reduced from 60
-            ('RAW-SUG-001', 'White Sugar Standard', 'RAW', 'KG', 100, 30),
-            ('RAW-WAT-FIL', 'Filtered Water', 'RAW', 'L', 200, 3),
-            ('RAW-VAN-EXT', 'Vanilla Extract Premium', 'RAW', 'L', 2, 60),
-            ('RAW-HAZ-EXT', 'Hazelnut Extract', 'RAW', 'L', 1.5, 60),
-            ('RAW-COC-POW', 'Cocoa Powder', 'RAW', 'KG', 10, 30),
-            ('RAW-GLU-SYR', 'Glucose Syrup', 'RAW', 'KG', 15, 30),
-            ('RAW-SUG-BRN', 'Brown Sugar Premium', 'RAW', 'KG', 20, 30),
-            ('RAW-MLK-POW', 'Milk Powder Full Cream', 'RAW', 'KG', 10, 20),
-            ('RAW-CAR-FLV', 'Caramel Flavoring', 'RAW', 'L', 1, 60),
-            ('RAW-TEA-BLK', 'Black Tea Extract', 'RAW', 'L', 5, 45),
-            ('RAW-ACD-CIT', 'Citric Acid', 'RAW', 'KG', 2, 30),
-            ('PKG-BTL-GLS-750', 'Glass Bottle 750ml Clear', 'PKG', 'EA', 100, 20),
-            ('PKG-CAP-BLK', 'Cap Black Standard', 'PKG', 'EA', 150, 20),
-            ('PKG-LAB-VAN', 'Label Vanilla 750ml', 'PKG', 'EA', 50, 30),
-            ('PKG-BTL-PET-1L', 'PET Bottle 1L', 'PKG', 'EA', 60, 20),
-            ('PKG-CAP-WHT', 'Cap White Standard', 'PKG', 'EA', 80, 20),
-            ('PKG-LAB-HAZ', 'Label Hazelnut 750ml', 'PKG', 'EA', 40, 30),
-            ('PKG-LAB-GEN', 'Label Generic Brand', 'PKG', 'EA', 100, 30),
+    def create_product_groups(self):
+        """Create 2 distinct groups (tabs) for each nature."""
+        self.stdout.write("Creating Product Groups...")
+        self.group_map = {}
+
+        # Definitions: (Nature, [Group Names])
+        definitions = [
+            ('FG', ['Retail Line', 'HORECA Line']),           # Finished Goods Groups
+            ('RAW', ['Imported Ingredients', 'Local Sourcing']), # Raw Material Groups
+            ('PKG', ['Premium Packaging', 'Standard Packaging']) # Packaging Groups
         ]
 
-        for sku, desc, nature, uom, usage, safety_days in products:
+        for nature, group_names in definitions:
+            for index, name in enumerate(group_names):
+                pg = ProductGroup.objects.create(
+                    nature=nature,
+                    name=name,
+                    order=index
+                )
+                self.group_map[name] = pg
+
+    def create_products(self):
+        self.stdout.write("Creating Products with Categories & Groups...")
+
+        # Structure: (SKU, Name, Nature, Category, Group_Name, Unit, Usage, Safety Days)
+        products = [
+            # === FINISHED GOODS (FG) ===
+            # Group: Retail Line
+            ('FG-SYR-VAN', 'Vanilla Syrup 750ml', 'FG', 'Syrups', 'Retail Line', 'BTL', 25, 14),
+            ('FG-SYR-HAZ', 'Hazelnut Syrup 750ml', 'FG', 'Syrups', 'Retail Line', 'BTL', 20, 14),
+
+            # Group: HORECA Line (Bulk/Food Service)
+            ('FG-SAU-CAR', 'Caramel Sauce 1L', 'FG', 'Sauces', 'HORECA Line', 'BTL', 15, 14),
+            ('FG-SAU-COC', 'Chocolate Sauce 1L', 'FG', 'Sauces', 'HORECA Line', 'BTL', 12, 14),
+            ('FG-CON-LEM', 'Lemon Tea Concentrate 1L', 'FG', 'Concentrates', 'HORECA Line', 'BTL', 28, 7),
+
+            # === RAW MATERIALS (RAW) ===
+            # Group: Local Sourcing (High Volume / Commodity)
+            ('RAW-SUG-001', 'White Sugar Standard', 'RAW', 'Core Ingredients', 'Local Sourcing', 'KG', 100, 30),
+            ('RAW-SUG-BRN', 'Brown Sugar Premium', 'RAW', 'Core Ingredients', 'Local Sourcing', 'KG', 20, 30),
+            ('RAW-WAT-FIL', 'Filtered Water', 'RAW', 'Core Ingredients', 'Local Sourcing', 'L', 200, 3),
+
+            # Group: Imported Ingredients (Specialty / High Value)
+            ('RAW-GLU-SYR', 'Glucose Syrup', 'RAW', 'Core Ingredients', 'Imported Ingredients', 'KG', 15, 30),
+            ('RAW-VAN-EXT', 'Vanilla Extract Premium', 'RAW', 'Flavor Agents', 'Imported Ingredients', 'L', 2, 60),
+            ('RAW-HAZ-EXT', 'Hazelnut Extract', 'RAW', 'Flavor Agents', 'Imported Ingredients', 'L', 1.5, 60),
+            ('RAW-CAR-FLV', 'Caramel Flavoring', 'RAW', 'Flavor Agents', 'Imported Ingredients', 'L', 1, 60),
+            ('RAW-TEA-BLK', 'Black Tea Extract', 'RAW', 'Flavor Agents', 'Imported Ingredients', 'L', 5, 45),
+            ('RAW-COC-POW', 'Cocoa Powder', 'RAW', 'Flavor Agents', 'Imported Ingredients', 'KG', 10, 30),
+            ('RAW-MLK-POW', 'Milk Powder Full Cream', 'RAW', 'Additives', 'Imported Ingredients', 'KG', 10, 20),
+            ('RAW-ACD-CIT', 'Citric Acid', 'RAW', 'Additives', 'Imported Ingredients', 'KG', 2, 30),
+
+            # === PACKAGING (PKG) ===
+            # Group: Premium Packaging (Glass / Specific Branding)
+            ('PKG-BTL-GLS-750', 'Glass Bottle 750ml Clear', 'PKG', 'Bottles', 'Premium Packaging', 'EA', 100, 20),
+            ('PKG-LAB-VAN', 'Label Vanilla 750ml', 'PKG', 'Labels', 'Premium Packaging', 'EA', 50, 30),
+            ('PKG-LAB-HAZ', 'Label Hazelnut 750ml', 'PKG', 'Labels', 'Premium Packaging', 'EA', 40, 30),
+
+            # Group: Standard Packaging (Generic / Bulk)
+            ('PKG-BTL-PET-1L', 'PET Bottle 1L', 'PKG', 'Bottles', 'Standard Packaging', 'EA', 60, 20),
+            ('PKG-CAP-BLK', 'Cap Black Standard', 'PKG', 'Closures', 'Standard Packaging', 'EA', 150, 20),
+            ('PKG-CAP-WHT', 'Cap White Standard', 'PKG', 'Closures', 'Standard Packaging', 'EA', 80, 20),
+            ('PKG-LAB-GEN', 'Label Generic Brand', 'PKG', 'Labels', 'Standard Packaging', 'EA', 100, 30),
+        ]
+
+        for sku, desc, nature, category, group_name, uom, usage, safety_days in products:
+            # Fetch the pre-created group object
+            group_obj = self.group_map.get(group_name)
+
             Product.objects.create(
-                sku=sku, description=desc, nature=nature, uom=uom,
+                sku=sku,
+                description=desc,
+                nature=nature,
+                category=category,
+                group=group_obj,  # <--- Assigning the Group here
+                uom=uom,
                 unit_weight=1.0 if uom == 'KG' else 0,
-                estimated_daily_usage=usage, safety_stock_days=safety_days
+                estimated_daily_usage=usage,
+                safety_stock_days=safety_days
             )
 
     def create_bom(self):
@@ -117,7 +167,7 @@ class Command(BaseCommand):
             except Product.DoesNotExist: pass
 
     def create_inventory(self):
-        """生成库存快照"""
+        """Generating Inventory Snapshots"""
         self.stdout.write("Generating Inventory Snapshots...")
 
         products = Product.objects.all()
@@ -125,13 +175,12 @@ class Command(BaseCommand):
             daily_usage = float(product.estimated_daily_usage)
             safety_stock = daily_usage * product.safety_stock_days
 
-            # 【强制缺货逻辑】
+            # Force shortage for specific items to demonstrate alerts
             if product.sku in ['FG-SYR-VAN', 'FG-CON-LEM']:
                 qty = 0
             else:
                 qty = int(safety_stock * random.uniform(0.5, 1.5))
 
-            # Create snapshot for TODAY
             InventorySnapshot.objects.create(
                 product=product,
                 snapshot_date=self.SIMULATION_DATE,
@@ -171,11 +220,7 @@ class Command(BaseCommand):
         fgs = list(Product.objects.filter(nature='FG'))
         if not fgs: return
 
-        # REFACTORED: Start generating orders from the Simulation Date (February)
-        # instead of the historical START_DATE (August).
         current_month = self.SIMULATION_DATE
-
-        # Keep the 6-month horizon for future orders
         end_month = self.SIMULATION_DATE + relativedelta(months=6)
 
         while current_month < end_month:
@@ -184,11 +229,9 @@ class Command(BaseCommand):
 
             for _ in range(orders_count):
                 product = random.choice(fgs)
-                # Reduced Order Quantity to match lower usage (20-100 range)
                 qty = decimal.Decimal(random.randint(20, 100))
                 random_day = random.randint(1, days_in_month)
 
-                # Ensure we don't crash if the random day is invalid for the month (handled by monthrange, but good practice)
                 try:
                     start_date = current_month.replace(day=random_day)
                 except ValueError:
@@ -208,8 +251,8 @@ class Command(BaseCommand):
             current_month += relativedelta(months=1)
 
     def create_market_demand(self):
-        """生成市场需求 (Forecast + Actual Sales Orders)"""
-        self.stdout.write("Generating Market Demand (Values capped < 1000)...")
+        """Generating Market Demand (Values capped < 1000)"""
+        self.stdout.write("Generating Market Demand...")
         random.seed(42)
         fgs = Product.objects.filter(nature='FG')
 
@@ -225,13 +268,10 @@ class Command(BaseCommand):
                     monthly_base = int(daily_usage * 30)
 
                     # --- 1. FORECAST ---
-                    # Removed "High Demand" 3000 logic for Vanilla Syrup
                     seasonality = 1.2 if current_month.month in [11, 12, 1] else 1.0
                     variance_fc = random.uniform(1.2, 1.5)
                     fc_qty = int(monthly_base * seasonality * variance_fc)
-
-                    # SAFETY CAP: Ensure < 1000
-                    fc_qty = min(fc_qty, 980)
+                    fc_qty = min(fc_qty, 980) # Safety cap
 
                     MarketDemand.objects.create(
                         product=product,
@@ -242,12 +282,9 @@ class Command(BaseCommand):
                     )
 
                     # --- 2. ACTUAL SALES ORDERS ---
-                    # Logic: Generate actuals for Past (History) AND Future (Confirmed Orders)
                     variance_act = random.uniform(0.9, 1.15)
                     act_qty = int(monthly_base * variance_act)
-
-                    # SAFETY CAP: Ensure < 1000
-                    act_qty = min(act_qty, 980)
+                    act_qty = min(act_qty, 980) # Safety cap
 
                     MarketDemand.objects.create(
                         product=product,
