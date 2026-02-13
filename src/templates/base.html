@@ -268,6 +268,14 @@
                     // 视觉反馈
                     setActiveLink(this);
 
+                    // Show Loading Spinner Immediately
+                    mainContent.innerHTML = `
+                        <div class="flex flex-col items-center justify-center h-full text-slate-400">
+                            <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mb-4"></div>
+                            <p>Loading...</p>
+                        </div>
+                    `;
+
                     fetch(url, {
                         headers: { 'X-Requested-With': 'XMLHttpRequest' }
                     })
@@ -284,7 +292,10 @@
 
                         window.history.pushState({path: url}, '', url);
                     })
-                    .catch(err => console.error('Load failed', err));
+                    .catch(err => {
+                         console.error('Load failed', err);
+                         mainContent.innerHTML = `<div class="text-red-500 p-8">Error loading content.</div>`;
+                    });
                 });
             });
 
