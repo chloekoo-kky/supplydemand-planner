@@ -77,7 +77,7 @@
 
     /* Column 2: Stock */
     .list-view-container .card-stock {
-        flex: 1; /* 占据剩余空间 */
+        flex: 1;
         margin: 0 1.5rem !important;
         padding: 0 !important;
         background: none !important;
@@ -85,10 +85,10 @@
         box-shadow: none !important;
 
         display: flex;
-        flex-direction: row !important; /* 让两组数据并排 */
+        flex-direction: row !important;
         align-items: center !important;
-        justify-content: flex-end; /* 靠右对齐 */
-        gap: 2rem; /* 两组数据之间的间距 */
+        justify-content: flex-end;
+        gap: 2rem;
     }
     /* List View: Show Category next to Stock in the upper row */
     .list-view-container .card-stock .stock-grid {
@@ -128,7 +128,7 @@
         align-items: flex-end !important;
     }
 
-    /* 列表模式下隐藏中间的参数行 (Usage/LeadTime/Safety) 以保持整洁 */
+    /* List View: Hide params row */
     .list-view-container .card-params-row {
         display: none !important;
     }
@@ -147,9 +147,9 @@
         margin-top: 0 !important;
         padding-top: 0 !important;
         border-top: none !important;
-        margin-left: auto; /* Push to far right */
+        margin-left: auto;
         padding-left: 1.5rem;
-        border-left: 1px solid #f3f4f6; /* Optional separator */
+        border-left: 1px solid #f3f4f6;
     }
 
     .loading-spinner {
@@ -157,11 +157,11 @@
    }
 
     #editProductModal { z-index: 50; }
-
-
 </style>
 
 <div class="container-fluid px-0 h-full flex flex-col">
+
+    <input type="hidden" id="inventory-group-filter" value="{{ active_group_id|default:'ALL' }}">
 
     <div class="bg-white border-b border-gray-200 px-6 pt-4 sticky top-0 z-20 shadow-sm" id="dashboard-header">
     <div class="flex justify-between items-center mb-4 gap-4">
@@ -211,7 +211,7 @@
                     onclick="setCategoryFilter('')"
                     data-value=""
                     class="category-filter-btn px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-colors shadow-sm border border-transparent {% if not current_category %}bg-gray-800 text-white{% else %}bg-gray-100 text-gray-600 hover:bg-gray-200 border-gray-200{% endif %}">
-                All
+                All Categories
             </button>
             {% for cat in all_categories %}
             <button type="button"
@@ -221,7 +221,6 @@
                 {{ cat }}
             </button>
             {% endfor %}
-
             <button type="button"
                     onclick="openManageCategoriesModal()"
                     class="px-2 py-1.5 rounded-full text-gray-400 hover:bg-gray-100 hover:text-gray-600 transition-colors"
@@ -234,14 +233,18 @@
     <div>
         <nav class="flex space-x-4 overflow-x-auto no-scrollbar" aria-label="Tabs">
             {% for tab in tabs_data %}
-            <button type="button" onclick="switchTab('tab-{{ tab.group_id }}')" ondblclick="{% if not tab.is_all %}renameTab({{ tab.group_id }}, '{{ tab.name }}'){% endif %}" id="btn-tab-{{ tab.group_id }}" class="tab-btn whitespace-nowrap py-3 px-1 border-b-2 border-transparent font-medium text-sm text-gray-500 hover:text-gray-700 hover:border-gray-300 flex items-center group {% if forloop.first %}active{% endif %}" data-target="tab-{{ tab.group_id }}">
+            <button type="button"
+                    onclick="switchTab('tab-{{ tab.group_id }}')"
+                    ondblclick="{% if not tab.is_all %}renameTab({{ tab.group_id }}, '{{ tab.name }}'){% endif %}"
+                    id="btn-tab-{{ tab.group_id }}"
+                    class="tab-btn whitespace-nowrap py-3 px-1 border-b-2 border-transparent font-medium text-sm text-gray-500 hover:text-gray-700 hover:border-gray-300 flex items-center group {% if tab.group_id|stringformat:'s' == active_group_id|stringformat:'s' %}active{% endif %}"
+                    data-target="tab-{{ tab.group_id }}">
                 {{ tab.name }}
                 {% if not tab.is_all %}
                 <span onclick="deleteTab(event, {{ tab.group_id }})" class="ml-2 text-gray-300 hover:text-red-500 rounded-full p-0.5 transition-colors opacity-0 group-hover:opacity-100">
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
                 </span>
                 {% endif %}
-                <span class="ml-2 bg-gray-100 text-gray-600 py-0.5 px-2 rounded-full text-xs">{{ tab.assets|length }}</span>
             </button>
             {% endfor %}
             <button type="button" onclick="createNewTab()" class="whitespace-nowrap py-3 px-3 font-medium text-sm text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded-t-lg transition-colors">+ New Group</button>
@@ -250,220 +253,51 @@
 
     <div class="flex-1 overflow-y-auto p-6 bg-gray-50 relative transition-colors duration-200" id="main-view-area">
     {% for tab in tabs_data %}
-    <div id="tab-{{ tab.group_id }}" class="tab-pane {% if not forloop.first %}hidden{% endif %} h-full">
-        {% if tab.assets %}
-        <div class="dynamic-view-container grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 sortable-grid pb-20" data-group-id="{{ tab.group_id }}">
-            {% for product in tab.assets %}
-                {% include 'inventory/partials/inventory_card.html' with product=product tab=tab groups_available=groups_available %}
-            {% endfor %}
-        </div>
-        {% else %}
-        <div class="flex flex-col items-center justify-center h-64 text-gray-400">
-            <p>No items found.</p>
+        {% if tab.group_id|stringformat:'s' == active_group_id|stringformat:'s' %}
+        <div id="tab-{{ tab.group_id }}" class="tab-pane h-full">
+            {% if tab.assets %}
+            <div class="dynamic-view-container grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 sortable-grid pb-20" data-group-id="{{ tab.group_id }}">
+                {% for product in tab.assets %}
+                    {% include 'inventory/partials/inventory_card.html' with product=product tab=tab groups_available=groups_available %}
+                {% endfor %}
+            </div>
+
+            {% if paginator and paginator.num_pages > 1 %}
+            <div class="mt-6 flex justify-center">
+                <div class="flex space-x-1">
+                    {% if page_obj.has_previous %}
+                    <a href="?page={{ page_obj.previous_page_number }}&group={{ active_group_id }}&search={{ current_search }}&category={{ current_category }}" class="px-3 py-1 border rounded bg-white text-gray-600 hover:bg-gray-100">Prev</a>
+                    {% endif %}
+
+                    <span class="px-3 py-1 border rounded bg-gray-100 text-gray-600">
+                        Page {{ page_obj.number }} of {{ paginator.num_pages }}
+                    </span>
+
+                    {% if page_obj.has_next %}
+                    <a href="?page={{ page_obj.next_page_number }}&group={{ active_group_id }}&search={{ current_search }}&category={{ current_category }}" class="px-3 py-1 border rounded bg-white text-gray-600 hover:bg-gray-100">Next</a>
+                    {% endif %}
+                </div>
+            </div>
+            {% endif %}
+
+            {% else %}
+            <div class="flex flex-col items-center justify-center h-64 text-gray-400">
+                <p>No items found in this group.</p>
+            </div>
+            {% endif %}
         </div>
         {% endif %}
-    </div>
     {% endfor %}
 </div>
 
-<div id="forecastModal" class="hidden fixed inset-0 bg-gray-600 bg-opacity-50 ... z-50">
-    <div class="relative top-20 mx-auto p-5 border w-[500px] shadow-lg rounded-md bg-white">
-        <h3 class="text-lg font-bold mb-4">Demand Schedule: <span id="fc_modal_sku"></span></h3>
-
-        <table class="w-full text-sm text-left">
-            <thead class="bg-gray-50 text-xs uppercase text-gray-500">
-                <tr>
-                    <th class="px-2 py-2">Country</th>
-                    <th class="px-2 py-2">ETA Date</th>
-                    <th class="px-2 py-2 text-right">Qty</th>
-                </tr>
-            </thead>
-            <tbody id="fc_modal_body">
-                </tbody>
-        </table>
-
-        <div class="mt-4 text-right">
-            <button onclick="closeForecastModal()" class="px-4 py-2 bg-gray-200 rounded">Close</button>
-        </div>
-    </div>
-</div>
-
-<div id="editProductModal" class="hidden fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50"
-     onmousedown="this.dataset.readyToClose = 'true'"
-     onclick="if(this.dataset.readyToClose === 'true') closeEditModal(); this.dataset.readyToClose = 'false'">
-
-    <div class="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white"
-         onmousedown="event.stopPropagation()"
-         onclick="event.stopPropagation()">
-
-        <div class="mt-3">
-            <h3 class="text-lg leading-6 font-medium text-gray-900 mb-2">Edit Product</h3>
-            <form id="editProductForm" class="text-left">
-                <input type="hidden" id="edit_product_id" name="id">
-                <div class="mb-3">
-                    <label class="block text-sm font-medium text-gray-700">SKU</label>
-                    <input type="text" id="edit_sku" name="sku" class="mt-1 py-2 px-2 block w-full rounded-md border-gray-300 shadow-sm bg-gray-100" readonly>
-                </div>
-                <div class="mb-3">
-                    <label class="block text-sm font-medium text-gray-700">Description</label>
-                    <input type="text" id="edit_desc" name="description" class="mt-1 py-2 px-2 block w-full rounded-md border-gray-300 shadow-sm">
-                </div>
-                <div class="mb-3">
-                    <label class="block text-sm font-medium text-gray-700 mb-2">Category</label>
-                    <input type="hidden" id="edit_category" name="category">
-
-                    <div class="flex flex-wrap gap-2" id="category-btn-container">
-                        {% for cat in all_categories %}
-                        <button type="button"
-                                onclick="selectCategory('{{ cat }}', this)"
-                                class="category-btn px-3 py-1 rounded-md text-xs font-medium border border-gray-200 bg-white text-gray-600 hover:border-blue-300 hover:text-white-600 transition-all shadow-sm">
-                            {{ cat }}
-                        </button>
-                        {% endfor %}
-
-                        <button type="button"
-                                onclick="toggleCustomCategory()"
-                                class="px-3 py-1 rounded-md text-xs font-medium border border-dashed border-gray-300 text-gray-400 hover:border-blue-400 hover:text-blue-600 transition-all flex items-center">
-                            <svg class="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
-                            Custom
-                        </button>
-                    </div>
-
-                    <input type="text"
-                           id="edit_category_custom"
-                           class="mt-3 py-2 px-2 block w-full rounded-md border-gray-300 shadow-sm text-sm hidden placeholder-gray-400 focus:border-blue-500 focus:ring-blue-500"
-                           placeholder="Enter new category name..."
-                           oninput="document.getElementById('edit_category').value = this.value">
-                </div>
-                <div class="grid grid-cols-2 gap-3">
-                    <div class="mb-3">
-                        <label class="block text-sm font-medium text-gray-700">Unit (UOM)</label>
-                        <input type="text" id="edit_uom" name="uom" class="mt-1 py-2 px-2 block w-full rounded-md border-gray-300 shadow-sm">
-                    </div>
-                    <div class="mb-3">
-                         <label class="block text-sm font-medium text-gray-700">Weight (kg)</label>
-                         <input type="number" step="0.01" id="edit_weight" name="unit_weight" class="mt-1 py-2 px-2 block w-full rounded-md border-gray-300 shadow-sm">
-                    </div>
-                </div>
-                <div class="mb-3">
-                     <label class="block text-sm font-medium text-gray-700">Volume (L)</label>
-                     <input type="number" step="0.01" id="edit_volume" name="unit_volume" class="mt-1 py-2 px-2 block w-full rounded-md border-gray-300 shadow-sm">
-                </div>
-
-                <div class="grid grid-cols-2 gap-3">
-                     <div class="mb-3">
-                        <label class="block text-sm font-medium text-gray-700">Est. Daily Usage</label>
-                        <input type="number" step="0.01" id="edit_usage" name="estimated_daily_usage" class="mt-1 py-2 px-2 block w-full rounded-md border-gray-300 shadow-sm">
-                    </div>
-                     <div class="mb-3">
-                        <label class="block text-sm font-medium text-gray-700">Min Order Qty (MOQ)</label>
-                        <input type="number" step="0.01" id="edit_moq" name="moq" class="mt-1 py-2 px-2 block w-full rounded-md border-gray-300 shadow-sm">
-                    </div>
-                </div>
-
-                <div class="grid grid-cols-2 gap-3">
-                     <div class="mb-3">
-                        <label class="block text-sm font-medium text-gray-700">Safety Stock (Days)</label>
-                        <input type="number" id="edit_safety" name="safety_stock_days" class="mt-1 py-2 px-2 block w-full rounded-md border-gray-300 shadow-sm">
-                    </div>
-                     <div class="mb-3">
-                        <label class="block text-sm font-medium text-gray-700">Lead Time (Days)</label>
-                        <input type="number" id="edit_lead" name="lead_time_days" class="mt-1 py-2 px-2 block w-full rounded-md border-gray-300 shadow-sm">
-                    </div>
-                </div>
-                <div class="mt-4 flex justify-end space-x-3">
-                    <button type="button" onclick="closeEditModal()" class="px-4 py-2 bg-gray-200 text-gray-800 rounded-md">Cancel</button>
-                    <button type="button" onclick="submitEditForm()" class="px-4 py-2 bg-blue-600 text-white rounded-md">Save</button>
-                </div>
-            </form>
-        </div>
-    </div>
-</div>
-
-<div id="demandAnalysisModal" class="hidden fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50"
-     onmousedown="this.dataset.readyToClose = 'true'"
-     onclick="if(this.dataset.readyToClose === 'true') closeDemandModal(); this.dataset.readyToClose = 'false'">
-
-    <div class="relative top-20 mx-auto p-0 border w-[600px] shadow-lg rounded-lg bg-white flex flex-col max-h-[85vh]"
-         onmousedown="event.stopPropagation()"
-         onclick="event.stopPropagation()">
-
-        <div class="px-5 py-4 border-b border-gray-100 flex justify-between items-center bg-gray-50 rounded-t-lg">
-            <div>
-                <h3 class="text-lg font-bold text-gray-800">Stock Analysis</h3>
-                <div class="flex flex-col mt-1">
-                    <span class="text-xs font-bold text-gray-800" id="da_modal_sku">SKU: ...</span>
-                    <span class="text-xs text-gray-500" id="da_modal_desc">...</span>
-                </div>
-            </div>
-            <button onclick="closeDemandModal()" class="text-gray-400 hover:text-gray-600">
-                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
-            </button>
-        </div>
-
-        <div class="flex-1 overflow-y-auto p-5 space-y-6">
-
-            <div>
-                <div class="flex justify-between items-end mb-2">
-                    <h4 class="text-sm font-bold text-gray-700 uppercase tracking-wide">1. Usage During Lead Time</h4>
-                </div>
-
-                <div class="flex justify-between items-center text-sm text-gray-500 mb-2 bg-gray-50 p-2 rounded border border-gray-100">
-                    <div>
-                        Lead Time: <span id="da_modal_lt" class="font-mono font-bold text-gray-800">...</span> days
-                        <span class="mx-2 text-gray-300">|</span>
-                        ETA: <span id="da_modal_eta" class="font-mono font-bold text-gray-800">...</span>
-                    </div>
-                    <div>
-                        Current Stock: <span id="da_modal_stock" class="font-mono font-bold text-gray-800">...</span>
-                    </div>
-                </div>
-
-                <div class="bg-white border border-gray-200 rounded-md overflow-hidden">
-                    <table class="min-w-full divide-y divide-gray-200">
-                        <thead class="bg-gray-50">
-                            <tr>
-                                <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Order</th>
-                                <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Date</th>
-                                <th class="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase">Qty</th>
-                                <th class="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase">Balance</th>
-                            </tr>
-                        </thead>
-                        <tbody id="da_lt_body" class="bg-white divide-y divide-gray-100 text-xs">
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-
-            <div>
-                 <div class="flex justify-between items-end mb-0">
-                    <h4 class="text-sm font-bold text-gray-700 uppercase tracking-wide">2. Stock Run-out Projection</h4>
-                </div>
-                <p class="text-sm text-gray-400 mb-2">Showing orders that consume the remaining balance:</p>
-                <div class="bg-white border border-gray-200 rounded-md overflow-hidden">
-                    <table class="min-w-full divide-y divide-gray-200">
-                        <thead class="bg-gray-50">
-                            <tr>
-                                <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Order</th>
-                                <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Date</th>
-                                <th class="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase">Qty</th>
-                                <th class="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase">Balance</th>
-                            </tr>
-                        </thead>
-                        <tbody id="da_ro_body" class="bg-white divide-y divide-gray-100 text-xs">
-                            </tbody>
-                    </table>
-                </div>
-            </div>
-
-        </div>
-
-        <div class="px-5 py-3 border-t border-gray-100 bg-gray-50 rounded-b-lg text-right">
-            <button onclick="closeDemandModal()" class="px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50 text-sm font-medium">Close</button>
-        </div>
-    </div>
-</div>
-
+{% include 'inventory/partials/import_modal_step1_upload.html' %}
+{% include 'inventory/partials/modals/forecast_modal.html' %}
+{% include 'inventory/partials/modals/edit_product_modal.html' %}
+{% include 'inventory/partials/modals/demand_analysis_modal.html' %}
+{% include 'inventory/partials/modals/manage_categories_modal.html' %}
+{% include 'inventory/partials/modals/bom_modal.html' %}
+{% include 'inventory/partials/modals/import_modal.html' %}
+{% include 'inventory/partials/modals/bom_import_modal.html' %}
 
 <script src="https://cdn.jsdelivr.net/npm/sortablejs@latest/Sortable.min.js"></script>
 
@@ -472,145 +306,78 @@
     var searchTimer = null;
     var selectedComponentData = null;
 
-    // === Search & Filter Logic ===
     function debounceSearch() {
         clearTimeout(searchTimer);
         searchTimer = setTimeout(() => {
             refreshInventory();
-        }, 300); // 300ms delay
+        }, 300);
     }
 
     function setCategoryFilter(val) {
-        // Update hidden input
         document.getElementById('inventory-category-filter').value = val;
-
-        // Update Visuals manually (since Header is not refreshed by AJAX)
+        // Visual Update
         document.querySelectorAll('.category-filter-btn').forEach(btn => {
-            // Reset to inactive
             btn.classList.remove('bg-gray-800', 'text-white');
             btn.classList.add('bg-gray-100', 'text-gray-600', 'hover:bg-gray-200', 'border-gray-200');
-
-            // Set active if matches
             if (btn.getAttribute('data-value') === val) {
                 btn.classList.remove('bg-gray-100', 'text-gray-600', 'hover:bg-gray-200', 'border-gray-200');
                 btn.classList.add('bg-gray-800', 'text-white');
             }
         });
-
         refreshInventory();
     }
 
+    // === AJAX Refresh with Group Support ===
     async function refreshInventory() {
         const searchVal = document.getElementById('inventory-search-input').value;
         const categoryVal = document.getElementById('inventory-category-filter').value;
-        const params = new URLSearchParams({ search: searchVal, category: categoryVal });
+        const groupVal = document.getElementById('inventory-group-filter').value;
 
-        // 1. Capture Scroll Position
+        const params = new URLSearchParams({
+            search: searchVal,
+            category: categoryVal,
+            group: groupVal
+        });
+
         const mainContainer = document.getElementById('main-view-area');
-        const scrollPos = mainContainer ? mainContainer.scrollTop : 0;
 
         try {
             const response = await fetch(`${window.location.pathname}?${params.toString()}`, {
                 headers: { 'X-Requested-With': 'XMLHttpRequest' }
             });
             const htmlText = await response.text();
+
             const parser = new DOMParser();
             const doc = parser.parseFromString(htmlText, 'text/html');
 
-            // 2. Update Header/Tabs (Lightweight replacement)
-            const oldNav = document.querySelector('nav[aria-label="Tabs"]');
-            const newNav = doc.querySelector('nav[aria-label="Tabs"]');
-            if (oldNav && newNav) oldNav.replaceWith(newNav);
+            // Replace Main Area
+            const newMain = doc.getElementById('main-view-area');
+            if (newMain) {
+                mainContainer.innerHTML = newMain.innerHTML;
+            }
 
-            // 3. Smart Update of Grids (Avoid replacing main container)
-            // Iterate over all tabs found in the *New* Document
-            const newTabPanes = doc.querySelectorAll('.tab-pane');
-
-            newTabPanes.forEach(newPane => {
-                const tabId = newPane.id;
-                const oldPane = document.getElementById(tabId);
-
-                if (!oldPane) {
-                    // If new tab doesn't exist (unlikely in filtered search but possible), append it
-                    mainContainer.appendChild(newPane);
-                } else {
-                    // Update content inside the pane
-                    const newGrid = newPane.querySelector('.dynamic-view-container');
-                    const oldGrid = oldPane.querySelector('.dynamic-view-container');
-
-                    if (newGrid && oldGrid) {
-                        updateGridContainer(oldGrid, newGrid);
-                    } else {
-                        // If structure changed significantly (e.g. empty state), replace pane content
-                        oldPane.innerHTML = newPane.innerHTML;
-                    }
-                    // Ensure visibility matches logic (handled by restoreActiveTab later)
-                    // But we keep classList sync just in case
-                    if(!newPane.classList.contains('hidden')) oldPane.classList.remove('hidden');
-                }
-            });
-
-            // Remove tabs that no longer exist
-            const currentTabIds = Array.from(newTabPanes).map(el => el.id);
-            document.querySelectorAll('.tab-pane').forEach(oldPane => {
-                if (!currentTabIds.includes(oldPane.id)) {
-                    oldPane.remove();
-                }
-            });
-
-            // 4. Restore Scroll Position
-            if (mainContainer) mainContainer.scrollTop = scrollPos;
-
-            // 5. Re-init Logic
+            // Re-init logic
             initSortable();
             restoreViewMode();
-            restoreActiveTab();
 
         } catch (e) {
             console.error("Search failed", e);
         }
     }
 
-    function updateGridContainer(oldGrid, newGrid) {
-        // Map existing items by ID for O(1) lookup
-        const oldItemsMap = new Map();
-        oldGrid.querySelectorAll('.group[data-id]').forEach(el => {
-            oldItemsMap.set(el.getAttribute('data-id'), el);
-        });
+    // === Switch Tab = Full Reload (or fast nav) ===
+    window.switchTab = function(targetId) {
+        let groupId = targetId.replace('tab-', '');
 
-        const newItems = newGrid.querySelectorAll('.group[data-id]');
-        const fragment = document.createDocumentFragment();
+        // Update URL to trigger server-side pagination for this group
+        const url = new URL(window.location);
+        url.searchParams.set('group', groupId);
+        url.searchParams.set('page', '1'); // Reset to page 1
 
-        newItems.forEach(newItem => {
-            const id = newItem.getAttribute('data-id');
-            const oldItem = oldItemsMap.get(id);
-
-            if (oldItem) {
-                // UPDATE: If content is different, update innerHTML.
-                // NOTE: To be absolutely safe with event listeners on children,
-                // we assume innerHTML replace on the card itself is acceptable (it's much faster than replacing the grid).
-                if (oldItem.innerHTML !== newItem.innerHTML) {
-                    oldItem.innerHTML = newItem.innerHTML;
-                }
-                fragment.appendChild(oldItem); // Move existing DOM node to fragment (preserves it)
-            } else {
-                // CREATE: Append new item
-                fragment.appendChild(newItem);
-            }
-        });
-
-        // Apply changes: This effectively reorders and updates the list
-        // Removing items that are not in fragment happens automatically because we overwrite innerHTML
-        // OR we can clear and append.
-
-        // Since we moved known nodes to fragment, they are detached from oldGrid.
-        // Any nodes left in oldGrid are "to be deleted".
-
-        oldGrid.innerHTML = ''; // Clear container
-        oldGrid.appendChild(fragment); // Fill with updated list
+        window.location.href = url.toString();
     }
 
-    // === View Toggling Logic ===
+    // View Toggling Logic
     window.toggleView = function(mode) {
         const containers = document.querySelectorAll('.dynamic-view-container');
         const gridBtn = document.getElementById('view-btn-grid');
@@ -633,45 +400,11 @@
         toggleView(savedMode);
     }
 
-    // === Tab Switching Logic ===
-    window.switchTab = function(targetId) {
-        document.querySelectorAll('.tab-pane').forEach(el => el.classList.add('hidden'));
-        document.querySelectorAll('.tab-btn').forEach(el => {
-            el.classList.remove('active', 'border-blue-600', 'text-blue-600');
-            el.classList.add('border-transparent', 'text-gray-500');
-        });
-
-        var targetPane = document.getElementById(targetId);
-        if(targetPane) targetPane.classList.remove('hidden');
-
-        const btn = document.getElementById('btn-' + targetId);
-        if(btn) {
-            btn.classList.add('active');
-            btn.classList.remove('border-transparent', 'text-gray-500');
-        }
-
-        localStorage.setItem('activeInvTab_' + CURRENT_NATURE, targetId);
+    // Initial Load
+    document.addEventListener("DOMContentLoaded", function() {
+        restoreViewMode();
         initSortable();
-    }
-
-    if (!window.hasInitializedInvTabs) {
-        document.addEventListener("DOMContentLoaded", function() {
-            restoreViewMode();
-            restoreActiveTab();
-        });
-        window.hasInitializedInvTabs = true;
-    }
-
-    function restoreActiveTab() {
-        const savedTab = localStorage.getItem('activeInvTab_' + CURRENT_NATURE);
-        if(savedTab && document.getElementById(savedTab)) {
-            window.switchTab(savedTab);
-        } else {
-            const firstBtn = document.querySelector('.tab-btn');
-            if(firstBtn) window.switchTab(firstBtn.getAttribute('data-target'));
-        }
-    }
-
+    });
 
     // === API Calls: Create, Rename, Delete Tab ===
 
@@ -688,7 +421,6 @@
             const data = await response.json();
             if (response.ok && data.status === 'ok') {
                 const newGroupId = data.group_id;
-                // For simplicity, reload to get new structure or implement manual DOM insertion like before
                 location.reload();
             } else {
                 alert("Error: " + (data.message || "Could not create group"));
@@ -1322,11 +1054,18 @@
 
         const uomSpan = document.getElementById('bom_add_uom');
         if (uomSpan) {
-            // 优先显示 prod.uom (例如 'KG', 'L', 'EA')
-            // 如果后端有传回 unit_weight/volume，也可以考虑组合显示，但简单的 UOM 最直观
-            uomSpan.innerText = prod.uom || 'Unit';
+            let uomDisplay = prod.uom || 'Unit';
 
-            // 可选：高亮一下，提醒用户单位已变更
+            // [FIX] Append the package size so user knows 0.04 refers to a 50L Unit
+            if (prod.unit_weight > 0) {
+                 uomDisplay += ` (${parseFloat(prod.unit_weight)}kg)`;
+            } else if (prod.unit_volume > 0) {
+                 uomDisplay += ` (${parseFloat(prod.unit_volume)}L)`;
+            }
+
+            uomSpan.innerText = uomDisplay;
+
+            // Highlight effect
             uomSpan.classList.add('bg-blue-50', 'text-blue-600');
             setTimeout(() => uomSpan.classList.remove('bg-blue-50', 'text-blue-600'), 500);
         }
@@ -1335,7 +1074,7 @@
         if (prod.unit_weight > 0 || prod.unit_volume > 0) {
             document.getElementById('bom_calculator_panel').classList.remove('hidden');
             document.getElementById('calc_use_weight').checked = true;
-            updateCalcLabel(); // 更新显示的单位提示
+            updateCalcLabel();
         }
     }
 
@@ -1533,140 +1272,3 @@
     }
 
 </script>
-
-<div id="manageCategoriesModal" class="hidden fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50"
-     onmousedown="this.dataset.readyToClose = 'true'"
-     onclick="if(this.dataset.readyToClose === 'true') closeManageCategoriesModal(); this.dataset.readyToClose = 'false'">
-
-    <div class="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white"
-         onmousedown="event.stopPropagation()"
-         onclick="event.stopPropagation()">
-
-        <div class="flex justify-between items-center mb-4 border-b pb-2">
-            <h3 class="text-lg leading-6 font-medium text-gray-900">Manage Categories</h3>
-            <button onclick="closeManageCategoriesModal()" class="text-gray-400 hover:text-gray-600">
-                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
-            </button>
-        </div>
-        <div class="mt-2 max-h-96 overflow-y-auto" id="manage_category_list">
-        </div>
-        <div class="mt-4 pt-3 border-t text-right">
-            <button onclick="closeManageCategoriesModal()" class="px-4 py-2 bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200">Close</button>
-        </div>
-    </div>
-</div>
-
-
-<div id="bomModal"
-     class="hidden fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50"
-     onmousedown="this.dataset.readyToClose = 'true'"
-     onclick="if(this.dataset.readyToClose === 'true') closeBomModal(); this.dataset.readyToClose = 'false'">
-
-    <div class="relative top-10 mx-auto p-0 border w-[600px] shadow-lg rounded-lg bg-white flex flex-col max-h-[90vh]"
-         onmousedown="event.stopPropagation()"
-         onclick="event.stopPropagation()">
-
-        <div class="px-6 py-4 border-b border-gray-100 flex justify-between items-center bg-gray-50 rounded-t-lg">
-            <div>
-                <h3 class="text-lg font-bold text-gray-800">Recipe Management</h3>
-                <p class="text-xs text-gray-500 mt-0.5" id="bom_modal_product_label">Product SKU</p>
-            </div>
-            <button onclick="closeBomModal()" class="text-gray-400 hover:text-gray-600">
-                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
-            </button>
-        </div>
-
-        <div class="px-6 py-4 bg-white border-b border-gray-100">
-             <label class="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Add Component</label>
-             <div class="flex space-x-2 relative">
-                 <div class="flex-1 relative">
-                     <input type="text" id="bom_search_input"
-                            class="w-full py-2 border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 text-sm"
-                            placeholder="Search Raw Material or Packaging..."
-                            autocomplete="off"
-                            oninput="debounceBomSearch()">
-
-                     <div id="bom_search_results" class="hidden absolute left-0 right-0 top-full mt-1 bg-white border border-gray-200 rounded-md shadow-lg z-50 max-h-60 overflow-y-auto">
-                        </div>
-                 </div>
-                 <div class="flex items-center">
-                    <input type="number" id="bom_add_qty" value="1" step="0.0001" min="0" class="w-30 py-2 px-2 border-gray-300 rounded-l-md shadow-sm text-sm focus:ring-indigo-500 focus:border-indigo-500" placeholder="Qty">
-                    <span id="bom_add_uom" class="inline-flex items-center px-3 py-2 rounded-r-md bg-gray-50 text-gray-500 text-sm">
-                        -
-                    </span>
-                </div>
-                <button onclick="addBomComponent()" class="ml-2 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-md text-sm font-medium shadow-sm transition">
-                    Add
-                </button>
-             </div>
-
-             <div class="mt-2 text-right">
-                 <button onclick="toggleBomCalculator()" class="text-xs text-blue-500 hover:text-blue-700 underline focus:outline-none">
-                     Calculate from Batch
-                 </button>
-             </div>
-
-             <div id="bom_calculator_panel" class="hidden mt-2 p-3 bg-blue-50 rounded-md border border-blue-100 grid grid-cols-2 gap-3 items-start transition-all">
-                 <div class="col-span-2 flex items-center mb-1">
-                     <input type="checkbox" id="calc_use_weight" class="rounded text-blue-600 focus:ring-blue-500 mr-2 h-4 w-4" onchange="updateCalcLabel(); runBomCalculation();">
-                     <label for="calc_use_weight" class="text-xs font-bold text-gray-700 cursor-pointer select-none">
-                         Calculate by Weight/Volume (Auto-convert units)
-                     </label>
-                 </div>
-
-                 <div>
-                     <label class="block text-[10px] text-gray-500 uppercase font-bold mb-1">Batch Size (FG Qty)</label>
-                     <input type="number" id="calc_batch_size" placeholder="e.g. 1000" class="w-full px-2 text-xs border-gray-300 rounded focus:ring-blue-500 focus:border-blue-500 py-1.5" oninput="runBomCalculation()">
-                 </div>
-
-                 <div>
-                     <label class="block text-[10px] text-gray-500 uppercase font-bold mb-1" id="calc_req_label">Total Component Req.</label>
-                     <input type="number" id="calc_total_req" placeholder="e.g. 13" class="w-full text-xs border-gray-300 rounded focus:ring-blue-500 focus:border-blue-500 py-1.5" oninput="runBomCalculation()">
-                 </div>
-
-                 <div id="calc_intermediate_row" class="col-span-2 hidden text-right -mb-1">
-                    <span class="text-[14px] text-gray-500">Weight (Per F.G.):</span>
-                    <span id="calc_intermediate_val" class="text-xs font-bold text-gray-700 ml-1">0</span>
-                    <span id="calc_intermediate_unit" class="text-[10px] text-gray-500">kg</span>
-                 </div>
-
-                 <div class="col-span-2 text-[14px] text-blue-600 border-t border-blue-200 pt-2 mt-1 flex justify-between items-center">
-                     <span>Calculation Result (Per UOM): <span id="calc_result_display" class="font-bold text-lg ml-1">0</span></span>
-                     <span id="calc_conversion_info" class="text-gray-400 italic text-[9px]"></span>
-                 </div>
-             </div>
-        </div>
-
-        <div class="flex-1 overflow-y-auto px-6 py-2">
-            <table class="min-w-full divide-y divide-gray-200">
-                <thead class="bg-gray-50 sticky top-0">
-                    <tr>
-                        <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Component</th>
-                        <th class="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Qty Req.</th>
-                        <th class="px-3 py-2 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Action</th>
-                    </tr>
-                </thead>
-                <tbody id="bom_list_body" class="bg-white divide-y divide-gray-200">
-                </tbody>
-            </table>
-
-            <div id="bom_empty_state" class="hidden py-8 text-center text-gray-400">
-                <p>No components in this recipe yet.</p>
-            </div>
-        </div>
-
-        <div class="px-6 py-4 border-t border-gray-100 bg-gray-50 rounded-b-lg text-right">
-            <button onclick="closeBomModal()" class="px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50 text-sm font-medium">Done</button>
-        </div>
-    </div>
-</div>
-
-<div id="importModal" class="hidden fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
-    <div class="relative top-20 mx-auto p-0 border w-[600px] shadow-lg rounded-lg bg-white flex flex-col overflow-hidden" id="importModalContent">
-        </div>
-</div>
-
-<div id="bomImportModal" class="hidden fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
-    <div class="relative top-20 mx-auto p-0 border w-[800px] shadow-lg rounded-lg bg-white flex flex-col overflow-hidden" id="bomImportContent">
-        </div>
-</div>

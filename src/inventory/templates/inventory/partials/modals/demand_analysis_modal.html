@@ -1,0 +1,83 @@
+<div id="demandAnalysisModal" class="hidden fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50"
+     onmousedown="this.dataset.readyToClose = 'true'"
+     onclick="if(this.dataset.readyToClose === 'true') closeDemandModal(); this.dataset.readyToClose = 'false'">
+
+    <div class="relative top-20 mx-auto p-0 border w-[600px] shadow-lg rounded-lg bg-white flex flex-col max-h-[85vh]"
+         onmousedown="event.stopPropagation()"
+         onclick="event.stopPropagation()">
+
+        <div class="px-5 py-4 border-b border-gray-100 flex justify-between items-center bg-gray-50 rounded-t-lg">
+            <div>
+                <h3 class="text-lg font-bold text-gray-800">Stock Analysis</h3>
+                <div class="flex flex-col mt-1">
+                    <span class="text-xs font-bold text-gray-800" id="da_modal_sku">SKU: ...</span>
+                    <span class="text-xs text-gray-500" id="da_modal_desc">...</span>
+                </div>
+            </div>
+            <button onclick="closeDemandModal()" class="text-gray-400 hover:text-gray-600">
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+            </button>
+        </div>
+
+        <div class="flex-1 overflow-y-auto p-5 space-y-6">
+
+            <div>
+                <div class="flex justify-between items-end mb-2">
+                    <h4 class="text-sm font-bold text-gray-700 uppercase tracking-wide">1. Usage During Lead Time</h4>
+                </div>
+
+                <div class="flex justify-between items-center text-sm text-gray-500 mb-2 bg-gray-50 p-2 rounded border border-gray-100">
+                    <div>
+                        Lead Time: <span id="da_modal_lt" class="font-mono font-bold text-gray-800">...</span> days
+                        <span class="mx-2 text-gray-300">|</span>
+                        ETA: <span id="da_modal_eta" class="font-mono font-bold text-gray-800">...</span>
+                    </div>
+                    <div>
+                        Current Stock: <span id="da_modal_stock" class="font-mono font-bold text-gray-800">...</span>
+                    </div>
+                </div>
+
+                <div class="bg-white border border-gray-200 rounded-md overflow-hidden">
+                    <table class="min-w-full divide-y divide-gray-200">
+                        <thead class="bg-gray-50">
+                            <tr>
+                                <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Order</th>
+                                <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Date</th>
+                                <th class="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase">Qty</th>
+                                <th class="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase">Balance</th>
+                            </tr>
+                        </thead>
+                        <tbody id="da_lt_body" class="bg-white divide-y divide-gray-100 text-xs">
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div>
+                 <div class="flex justify-between items-end mb-0">
+                    <h4 class="text-sm font-bold text-gray-700 uppercase tracking-wide">2. Stock Run-out Projection</h4>
+                </div>
+                <p class="text-sm text-gray-400 mb-2">Showing orders that consume the remaining balance:</p>
+                <div class="bg-white border border-gray-200 rounded-md overflow-hidden">
+                    <table class="min-w-full divide-y divide-gray-200">
+                        <thead class="bg-gray-50">
+                            <tr>
+                                <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Order</th>
+                                <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Date</th>
+                                <th class="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase">Qty</th>
+                                <th class="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase">Balance</th>
+                            </tr>
+                        </thead>
+                        <tbody id="da_ro_body" class="bg-white divide-y divide-gray-100 text-xs">
+                            </tbody>
+                    </table>
+                </div>
+            </div>
+
+        </div>
+
+        <div class="px-5 py-3 border-t border-gray-100 bg-gray-50 rounded-b-lg text-right">
+            <button onclick="closeDemandModal()" class="px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50 text-sm font-medium">Close</button>
+        </div>
+    </div>
+</div>

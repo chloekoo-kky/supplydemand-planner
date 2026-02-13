@@ -1,0 +1,21 @@
+<div id="forecastModal" class="hidden fixed inset-0 bg-gray-600 bg-opacity-50 ... z-50">
+    <div class="relative top-20 mx-auto p-5 border w-[500px] shadow-lg rounded-md bg-white">
+        <h3 class="text-lg font-bold mb-4">Demand Schedule: <span id="fc_modal_sku"></span></h3>
+
+        <table class="w-full text-sm text-left">
+            <thead class="bg-gray-50 text-xs uppercase text-gray-500">
+                <tr>
+                    <th class="px-2 py-2">Country</th>
+                    <th class="px-2 py-2">ETA Date</th>
+                    <th class="px-2 py-2 text-right">Qty</th>
+                </tr>
+            </thead>
+            <tbody id="fc_modal_body">
+                </tbody>
+        </table>
+
+        <div class="mt-4 text-right">
+            <button onclick="closeForecastModal()" class="px-4 py-2 bg-gray-200 rounded">Close</button>
+        </div>
+    </div>
+</div>

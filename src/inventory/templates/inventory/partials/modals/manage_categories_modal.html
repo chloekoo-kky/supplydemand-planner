@@ -1,0 +1,21 @@
+<div id="manageCategoriesModal" class="hidden fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50"
+     onmousedown="this.dataset.readyToClose = 'true'"
+     onclick="if(this.dataset.readyToClose === 'true') closeManageCategoriesModal(); this.dataset.readyToClose = 'false'">
+
+    <div class="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white"
+         onmousedown="event.stopPropagation()"
+         onclick="event.stopPropagation()">
+
+        <div class="flex justify-between items-center mb-4 border-b pb-2">
+            <h3 class="text-lg leading-6 font-medium text-gray-900">Manage Categories</h3>
+            <button onclick="closeManageCategoriesModal()" class="text-gray-400 hover:text-gray-600">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+            </button>
+        </div>
+        <div class="mt-2 max-h-96 overflow-y-auto" id="manage_category_list">
+        </div>
+        <div class="mt-4 pt-3 border-t text-right">
+            <button onclick="closeManageCategoriesModal()" class="px-4 py-2 bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200">Close</button>
+        </div>
+    </div>
+</div>
