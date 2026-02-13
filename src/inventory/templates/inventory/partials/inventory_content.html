@@ -1,7 +1,9 @@
 <style>
     /* === Base Card Styles (Grid Mode) === */
     .asset-card {
-        transition: all 0.2s ease-in-out;
+        content-visibility: auto;
+        contain-intrinsic-size: 1px 250px;
+        transition: transform 0.2s ease-in-out, box-shadow 0.2s;
         height: 100%;
         display: flex;
         flex-direction: column;
@@ -141,7 +143,6 @@
         gap: 1rem;
     }
 
-    /* Column 4: Actions (New) */
     .list-view-container .card-actions {
         margin-top: 0 !important;
         padding-top: 0 !important;
@@ -151,7 +152,13 @@
         border-left: 1px solid #f3f4f6; /* Optional separator */
     }
 
+    .loading-spinner {
+       display: flex; justify-content: center; padding: 20px;
+   }
+
     #editProductModal { z-index: 50; }
+
+
 </style>
 
 <div class="container-fluid px-0 h-full flex flex-col">
@@ -735,50 +742,111 @@
     async function refreshInventory() {
         const searchVal = document.getElementById('inventory-search-input').value;
         const categoryVal = document.getElementById('inventory-category-filter').value;
+        const params = new URLSearchParams({ search: searchVal, category: categoryVal });
 
-        const params = new URLSearchParams({
-            search: searchVal,
-            category: categoryVal
-        });
+        // 1. Capture Scroll Position
+        const mainContainer = document.getElementById('main-view-area');
+        const scrollPos = mainContainer ? mainContainer.scrollTop : 0;
 
-        // Add header to request partial content
         try {
             const response = await fetch(`${window.location.pathname}?${params.toString()}`, {
                 headers: { 'X-Requested-With': 'XMLHttpRequest' }
             });
             const htmlText = await response.text();
-
-            // Parse the response
             const parser = new DOMParser();
             const doc = parser.parseFromString(htmlText, 'text/html');
 
-            // 1. Replace Tabs Navigation (to update counts)
+            // 2. Update Header/Tabs (Lightweight replacement)
             const oldNav = document.querySelector('nav[aria-label="Tabs"]');
             const newNav = doc.querySelector('nav[aria-label="Tabs"]');
-            if (oldNav && newNav) {
-                oldNav.replaceWith(newNav);
-            }
+            if (oldNav && newNav) oldNav.replaceWith(newNav);
 
-            // 2. Replace Main Content Area
-            const oldMain = document.getElementById('main-view-area');
-            const newMain = doc.getElementById('main-view-area');
-            if (oldMain && newMain) {
-                oldMain.replaceWith(newMain);
-            }
+            // 3. Smart Update of Grids (Avoid replacing main container)
+            // Iterate over all tabs found in the *New* Document
+            const newTabPanes = doc.querySelectorAll('.tab-pane');
 
-            // Re-initialize any plugins if necessary (e.g. Sortable)
+            newTabPanes.forEach(newPane => {
+                const tabId = newPane.id;
+                const oldPane = document.getElementById(tabId);
+
+                if (!oldPane) {
+                    // If new tab doesn't exist (unlikely in filtered search but possible), append it
+                    mainContainer.appendChild(newPane);
+                } else {
+                    // Update content inside the pane
+                    const newGrid = newPane.querySelector('.dynamic-view-container');
+                    const oldGrid = oldPane.querySelector('.dynamic-view-container');
+
+                    if (newGrid && oldGrid) {
+                        updateGridContainer(oldGrid, newGrid);
+                    } else {
+                        // If structure changed significantly (e.g. empty state), replace pane content
+                        oldPane.innerHTML = newPane.innerHTML;
+                    }
+                    // Ensure visibility matches logic (handled by restoreActiveTab later)
+                    // But we keep classList sync just in case
+                    if(!newPane.classList.contains('hidden')) oldPane.classList.remove('hidden');
+                }
+            });
+
+            // Remove tabs that no longer exist
+            const currentTabIds = Array.from(newTabPanes).map(el => el.id);
+            document.querySelectorAll('.tab-pane').forEach(oldPane => {
+                if (!currentTabIds.includes(oldPane.id)) {
+                    oldPane.remove();
+                }
+            });
+
+            // 4. Restore Scroll Position
+            if (mainContainer) mainContainer.scrollTop = scrollPos;
+
+            // 5. Re-init Logic
             initSortable();
-
-            // Re-apply view mode logic (Grid/List)
             restoreViewMode();
-
-            // Restore active tab logic if needed (though filtering usually resets context)
-            // But we keep the logic simple: The backend renders the tabs based on the filter.
             restoreActiveTab();
 
         } catch (e) {
             console.error("Search failed", e);
         }
+    }
+
+    function updateGridContainer(oldGrid, newGrid) {
+        // Map existing items by ID for O(1) lookup
+        const oldItemsMap = new Map();
+        oldGrid.querySelectorAll('.group[data-id]').forEach(el => {
+            oldItemsMap.set(el.getAttribute('data-id'), el);
+        });
+
+        const newItems = newGrid.querySelectorAll('.group[data-id]');
+        const fragment = document.createDocumentFragment();
+
+        newItems.forEach(newItem => {
+            const id = newItem.getAttribute('data-id');
+            const oldItem = oldItemsMap.get(id);
+
+            if (oldItem) {
+                // UPDATE: If content is different, update innerHTML.
+                // NOTE: To be absolutely safe with event listeners on children,
+                // we assume innerHTML replace on the card itself is acceptable (it's much faster than replacing the grid).
+                if (oldItem.innerHTML !== newItem.innerHTML) {
+                    oldItem.innerHTML = newItem.innerHTML;
+                }
+                fragment.appendChild(oldItem); // Move existing DOM node to fragment (preserves it)
+            } else {
+                // CREATE: Append new item
+                fragment.appendChild(newItem);
+            }
+        });
+
+        // Apply changes: This effectively reorders and updates the list
+        // Removing items that are not in fragment happens automatically because we overwrite innerHTML
+        // OR we can clear and append.
+
+        // Since we moved known nodes to fragment, they are detached from oldGrid.
+        // Any nodes left in oldGrid are "to be deleted".
+
+        oldGrid.innerHTML = ''; // Clear container
+        oldGrid.appendChild(fragment); // Fill with updated list
     }
 
     // === View Toggling Logic ===
@@ -806,8 +874,6 @@
 
     // === Tab Switching Logic ===
     window.switchTab = function(targetId) {
-        console.log(`cw [Debug] Switching to tab: ${targetId}`);
-
         document.querySelectorAll('.tab-pane').forEach(el => el.classList.add('hidden'));
         document.querySelectorAll('.tab-btn').forEach(el => {
             el.classList.remove('active', 'border-blue-600', 'text-blue-600');
@@ -815,12 +881,7 @@
         });
 
         var targetPane = document.getElementById(targetId);
-        if(targetPane) {
-            targetPane.classList.remove('hidden');
-            console.log(`   👁️ [Debug] Tab pane ${targetId} is now VISIBLE.`);
-        } else {
-            console.error(`   ❌ [Debug] Tab pane ${targetId} NOT FOUND.`);
-        }
+        if(targetPane) targetPane.classList.remove('hidden');
 
         const btn = document.getElementById('btn-' + targetId);
         if(btn) {
@@ -829,9 +890,6 @@
         }
 
         localStorage.setItem('activeInvTab_' + CURRENT_NATURE, targetId);
-
-        // === Force Init on the now-visible tab ===
-        console.log("   🔄 [Debug] Triggering initSortable() for new tab...");
         initSortable();
     }
 
@@ -841,13 +899,6 @@
             restoreActiveTab();
         });
         window.hasInitializedInvTabs = true;
-    }
-
-    if (document.readyState === "complete" || document.readyState === "interactive") {
-        setTimeout(() => {
-            restoreViewMode();
-            restoreActiveTab();
-        }, 50);
     }
 
     function restoreActiveTab() {
@@ -1080,81 +1131,34 @@
 
     // --- SortableJS ---
     window.initSortable = function() {
-    console.log("🔧 [Debug] initSortable() called.");
-
-    // 1. Safety check
-    if (typeof Sortable === 'undefined') {
-        console.warn("⚠️ [Debug] SortableJS not loaded yet, retrying in 100ms...");
-        setTimeout(window.initSortable, 100);
-        return;
-    }
-
-    var grids = document.querySelectorAll('.sortable-grid');
-    console.log(`🔎 [Debug] Found ${grids.length} potential grids.`);
-
-    grids.forEach((el, index) => {
-        const gridId = el.getAttribute('data-group-id') || 'Unknown ID';
-        const isInit = el.getAttribute('data-sortable-init') === 'true';
-        const isVisible = el.offsetParent !== null;
-
-        console.log(`   ➡ Grid #${index} (Group: ${gridId}): Init=${isInit}, Visible=${isVisible}`);
-
-        // 2. Prevent re-initialization
-        if (isInit) {
-            console.log(`      ⏭️ [Debug] SKIPPING: Already initialized.`);
+        if (typeof Sortable === 'undefined') {
+            setTimeout(window.initSortable, 100);
             return;
         }
-
-        // 3. Skip hidden elements (Crucial for Tabs)
-        if (!isVisible) {
-            console.log(`      🙈 [Debug] SKIPPING: Element is hidden (display: none). Will init when tab opens.`);
-            return;
-        }
-
-        console.log(`      ✅ [Debug] SUCCESS: Initializing Sortable on Grid #${index}...`);
-
-        Sortable.create(el, {
-            group: 'inventory-items',
-            animation: 150,
-            handle: '.drag-handle',
-            ghostClass: 'sortable-ghost',
-            dataIdAttr: 'data-id',
-
-            // Log when dragging actually starts to confirm it's working
-            onStart: function (evt) {
-                console.log("✊ [Debug] Drag started!", evt);
-            },
-
-            onEnd: function (evt) {
-                console.log("🛑 [Debug] Drag ended. Saving order...");
-                var order = this.toArray();
-
-                fetch("{% url 'inventory:product_reorder' %}", {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-CSRFToken': '{{ csrf_token }}'
-                    },
-                    body: JSON.stringify({order: order})
-                })
-                .then(response => response.json())
-                .then(data => {
-                    console.log("💾 [Debug] Save response:", data);
-                    if (data.status !== 'ok') {
-                        console.error("Reorder failed:", data);
-                        alert("Failed to save new order.");
-                    }
-                })
-                .catch(error => {
-                    console.error("Network error:", error);
-                });
-            }
+        var grids = document.querySelectorAll('.sortable-grid');
+        grids.forEach((el) => {
+            if (el.getAttribute('data-sortable-init') === 'true') return;
+            Sortable.create(el, {
+                group: 'inventory-items',
+                animation: 150,
+                handle: '.drag-handle',
+                ghostClass: 'sortable-ghost',
+                dataIdAttr: 'data-id',
+                onEnd: function (evt) {
+                    var order = this.toArray();
+                    fetch("{% url 'inventory:product_reorder' %}", {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRFToken': '{{ csrf_token }}'
+                        },
+                        body: JSON.stringify({order: order})
+                    });
+                }
+            });
+            el.setAttribute('data-sortable-init', 'true');
         });
-
-        // Mark as initialized
-        el.setAttribute('data-sortable-init', 'true');
-    });
-}
+    }
 
     // 立即尝试初始化
     window.initSortable();

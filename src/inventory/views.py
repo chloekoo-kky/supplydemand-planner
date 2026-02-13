@@ -20,6 +20,7 @@ from django.utils import timezone
 from django.utils.text import slugify
 from collections import defaultdict
 from datetime import timedelta
+from django.core.paginator import Paginator
 
 from rapidfuzz import process, fuzz
 from decimal import Decimal
