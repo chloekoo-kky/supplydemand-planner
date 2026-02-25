@@ -1,14 +1,25 @@
+{% if request.user.is_superuser and not exporting_pdf %}
+<div class="max-w-4xl mx-auto mb-4 flex justify-end gap-3">
+    <button onclick="document.getElementById('editResumeModal').classList.remove('hidden')" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-semibold shadow flex items-center transition-colors">
+        <i class="bi bi-pencil-square mr-2"></i> Edit Resume
+    </button>
+    <a href="{% url 'core:export_resume_pdf' %}" class="bg-slate-800 hover:bg-slate-900 text-white px-4 py-2 rounded-lg text-sm font-semibold shadow flex items-center transition-colors">
+        <i class="bi bi-file-earmark-pdf mr-2"></i> Export PDF
+    </a>
+</div>
+{% endif %}
+
 <div class="max-w-4xl mx-auto bg-white shadow-xl rounded-2xl overflow-hidden border border-slate-100">
     <div class="bg-slate-900 p-8 text-white">
         <div class="flex flex-col md:flex-row justify-between items-start md:items-center">
             <div>
-                <h1 class="text-3xl font-bold tracking-tight">Chloe Koo</h1>
-                <p class="text-blue-400 font-medium mt-1">Supply Chain Transformation & Automation Specialist | <br>Practical Python Problem Solver</p>
+                <h1 class="text-3xl font-bold tracking-tight">{{ resume.name }}</h1>
+                <p class="text-blue-400 font-medium mt-1">{{ resume.title|linebreaksbr }}</p>
             </div>
             <div class="mt-4 md:mt-0 text-slate-400 text-sm space-y-1">
-                <p><i class="bi bi-geo-alt-fill mr-2"></i>Malaysia, Kuala Lumpur</p>
-                <p><i class="bi bi-telephone-fill mr-2"></i>+60 17-638 7638</p>
-                <p><i class="bi bi-envelope-fill mr-2"></i>kwanyee.koo@gmail.com</p>
+                <p><i class="bi bi-geo-alt-fill mr-2"></i>{{ resume.location }}</p>
+                <p><i class="bi bi-telephone-fill mr-2"></i>{{ resume.phone }}</p>
+                <p><i class="bi bi-envelope-fill mr-2"></i>{{ resume.email }}</p>
             </div>
         </div>
     </div>
@@ -16,18 +27,14 @@
     <div class="p-8 space-y-10">
         <section>
             <h2 class="text-lg font-bold text-slate-800 uppercase tracking-wider border-b-2 border-blue-500 inline-block mb-4">Professional Profile</h2>
-            <p class="text-slate-600 leading-relaxed">
-                A supply chain enthusiast and self-taught developer specializing in bridging the gap between complex business operations and technical automation. With a diverse background spanning real estate, event logistics, and warehouse management, I excel at identifying operational bottlenecks and building custom Django/Python solutions to solve them. As a "blank canvas" professional, I prioritize rapid self-directed learning and logical resilience to create efficient, self-monitoring workflows that drive business value.
-            </p>
+            <p class="text-slate-600 leading-relaxed">{{ resume.professional_profile }}</p>
         </section>
 
         <section>
             <h2 class="text-lg font-bold text-slate-800 uppercase tracking-wider border-b-2 border-blue-500 inline-block mb-4">Professional Manifesto</h2>
-            <p class="text-slate-600 leading-relaxed mb-4">
-                I am not a commercial software engineer by trade; I am an operations specialist who mastered Python as a strategic tool to eliminate inefficiency. My expertise lies in identifying repetitive, high-risk manual workflows and building custom, cost-effective automation systems to solve them.
-            </p>
+            <p class="text-slate-600 leading-relaxed mb-4">{{ resume.manifesto_intro }}</p>
             <p class="text-slate-600 leading-relaxed">
-                <strong>Why I am moving on:</strong> After successfully transforming logistics operations and automating myself out of daily repetitive tasks, I am seeking to exit my current comfort zone. I am looking for a rigorous environment that challenges my resilience and allows me to apply my "blank canvas" adaptability to broader, more complex business problems.
+                <strong>Why I am moving on:</strong> {{ resume.manifesto_reason }}
             </p>
         </section>
 
@@ -48,99 +55,192 @@
         <section>
             <h2 class="text-lg font-bold text-slate-800 uppercase tracking-wider border-b-2 border-blue-500 inline-block mb-4">Professional Experience</h2>
             <div class="space-y-8">
+                {% for exp in resume.experiences.all %}
                 <div>
                     <div class="flex justify-between items-baseline">
-                        <h3 class="font-bold text-slate-800">Warehouse Manager</h3>
-                        <span class="text-sm font-semibold text-blue-600 bg-blue-50 px-2 py-1 rounded">Oct 2019 - Present</span>
+                        <h3 class="font-bold text-slate-800">{{ exp.title }}</h3>
+                        {% if exp.is_current %}
+                        <span class="text-sm font-semibold text-blue-600 bg-blue-50 px-2 py-1 rounded">{{ exp.date_range }}</span>
+                        {% else %}
+                        <span class="text-sm text-slate-400">{{ exp.date_range }}</span>
+                        {% endif %}
                     </div>
-                    <p class="text-sm text-slate-500 font-medium italic">Logistics & Operations Management</p>
-                    <ul class="list-disc list-inside text-slate-600 mt-2 text-sm space-y-2">
-                        <li>Operational Transformation : Directed end-to-end logistics, transitioning from manual tracking to self-developed digital tools to ensure inventory integrity.</li>
-                        <li>Automation Design : Engineered cross-departmental workflows with built-in "self-supervision" mechanisms to prevent critical errors in procurement and fulfillment.</li>
-                        <li>Technical Resilience : Leveraged Python to build micro-services that bridge gaps in standard operational procedures, ensuring agility in high-pressure environments.</li>
-                    </ul>
-                </div>
+                    <p class="text-sm text-slate-500 font-medium {% if exp.is_current %}italic{% endif %}">{{ exp.company }}</p>
 
-                     <div>
-                    <div class="flex justify-between items-baseline">
-                        <h3 class="font-bold text-slate-800">Assistant Leasing Manager</h3>
-                        <span class="text-sm text-slate-400">Aug 2017 - Sept 2019</span>
-                    </div>
-                    <p class="text-sm text-slate-500 font-medium">Avenue Bangi Management Sdn Bhd</p>
-                    <ul class="list-disc list-inside text-slate-600 mt-1 text-sm">
-                        <li>Analyzed target markets to develop marketing strategies and coordinated complex tenant move-in/out logistics.</li>
+                    <ul class="list-disc list-inside text-slate-600 mt-2 text-sm {% if exp.is_current %}space-y-2{% endif %}">
+                        {% for bullet in exp.get_bullets %}
+                        <li>{{ bullet }}</li>
+                        {% endfor %}
                     </ul>
                 </div>
-
-                <div>
-                    <div class="flex justify-between items-baseline">
-                        <h3 class="font-bold text-slate-800">Assistant Manager (Event & Promotion)</h3>
-                        <span class="text-sm text-slate-400">March 2017 - July 2017</span>
-                    </div>
-                    <p class="text-sm text-slate-500 font-medium">Aivoria Group Sdn Bhd</p>
-                    <ul class="list-disc list-inside text-slate-600 mt-1 text-sm">
-                        <li>Managed logistics for goods and fixtures; troubleshot and integrated company POS systems for events.</li>
-                    </ul>
-                </div>
-
-                <div>
-                    <div class="flex justify-between items-baseline">
-                        <h3 class="font-bold text-slate-800">Interior Fit-Out & Real Estate Executive</h3>
-                        <span class="text-sm text-slate-400">Dec 2015 - Feb 2017</span>
-                    </div>
-                    <p class="text-sm text-slate-500 font-medium">Aivoria Group Sdn Bhd</p>
-                    <ul class="list-disc list-inside text-slate-600 mt-1 text-sm">
-                        <li>Ensured M&E and interior design compliance with government regulations; managed company real estate assets.</li>
-                    </ul>
-                </div>
-
-                <div>
-                    <div class="flex justify-between items-baseline">
-                        <h3 class="font-bold text-slate-800">Team Manager / Senior Real Estate Negotiator</h3>
-                        <span class="text-sm text-slate-400">Oct 2010 - Jun 2015</span>
-                    </div>
-                    <p class="text-sm text-slate-500 font-medium">Oriental Realty / Global Link Properties Sdn Bhd</p>
-                    <ul class="list-disc list-inside text-slate-600 mt-1 text-sm">
-                        <li>Led recruitment and training, significantly increasing team sales revenue through data-backed performance coaching.</li>
-                    </ul>
-                </div>
+                {% endfor %}
             </div>
         </section>
 
         <section>
             <h2 class="text-lg font-bold text-slate-800 uppercase tracking-wider border-b-2 border-blue-500 inline-block mb-4">Core Competencies</h2>
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm text-slate-600">
+                {% for comp in resume.competencies.all %}
                 <div class="flex items-start">
-                    <i class="bi bi-rocket-takeoff-fill text-blue-500 mr-2 mt-1"></i>
-                    <p><strong>Self-Driven Tech</strong>: Using Python & Django not for theory, but to build tools that solve real-world business inefficiencies through rapid SaaS development.</p>
+                    <i class="bi {{ comp.icon }} text-blue-500 mr-2 mt-1"></i>
+                    <p><strong>{{ comp.title }}</strong>: {{ comp.description }}</p>
                 </div>
-                <div class="flex items-start">
-                    <i class="bi bi-graph-up-arrow text-blue-500 mr-2 mt-1"></i>
-                    <p><strong>Autodidactic Growth</strong>: Proven ability to learn complex skills (Coding, 3D Design, Trading) from scratch without formal instruction.</p>
-                </div>
-                <div class="flex items-start">
-                    <i class="bi bi-palette-fill text-blue-500 mr-2 mt-1"></i>
-                    <p><strong>Learning Capability</strong>: Self-taught SketchUp for roadshow space planning and residential interior design (for my own house)</p>
-                </div>
-                <div class="flex items-start">
-                    <i class="bi bi-shield-lock-fill text-blue-500 mr-2 mt-1"></i>
-                    <p><strong>Operational Resilience</strong>: Expertise in building "micro-solutions" that strengthen the "last mile" of supply chain execution.</p>
-                </div>
+                {% endfor %}
             </div>
         </section>
 
         <section>
             <h2 class="text-lg font-bold text-slate-800 uppercase tracking-wider border-b-2 border-blue-500 inline-block mb-4">Education & Background</h2>
             <div>
-                <h3 class="font-bold text-slate-800">Academic Background in Accounting & Finance</h3>
-                <p class="text-sm text-slate-500">Completed 6 months of Foundation and 2 years of Professional Degree coursework.</p>
+                <h3 class="font-bold text-slate-800">{{ resume.edu_title }}</h3>
+                <p class="text-sm text-slate-500">{{ resume.edu_subtitle }}</p>
                 <div class="mt-4 bg-slate-50 border-l-4 border-blue-500 p-4">
                     <p class="text-sm text-slate-600">
-                        "Pivoted from traditional academia to pursue a high-intensity, practice-based self-driven learning path. This background provided a rigorous foundation in financial logic and data integrity. I do not carry a formal degree, but I carry a portfolio of solved problems and live systems. I define my value not by credentials, but by my capability to learn rapidly and deliver tangible business results."
+                        {{ resume.edu_quote }}
                     </p>
                 </div>
-
             </div>
         </section>
     </div>
 </div>
+
+{% if request.user.is_superuser and not exporting_pdf %}
+<div id="editResumeModal" class="hidden fixed inset-0 bg-slate-900 bg-opacity-50 z-50 flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col">
+
+        <div class="p-6 border-b border-slate-100 flex justify-between items-center bg-white rounded-t-2xl">
+            <h2 class="text-xl font-bold text-slate-800">Edit Resume Profile</h2>
+            <button onclick="document.getElementById('editResumeModal').classList.add('hidden')" class="text-slate-400 hover:text-red-500 transition-colors">
+                <i class="bi bi-x-lg text-xl"></i>
+            </button>
+        </div>
+
+        <div class="p-6 overflow-y-auto bg-slate-50">
+            <form id="editResumeForm" action="{% url 'core:edit_resume' %}" method="POST" class="space-y-6">
+                {% csrf_token %}
+
+                <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm space-y-4">
+                    <h3 class="font-bold text-slate-700 border-b pb-2">1. Basic Information</h3>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-sm font-medium text-slate-700 mb-1">Name</label>
+                            <input type="text" name="name" value="{{ resume.name }}" class="w-full px-3 py-2 border border-slate-300 rounded-lg">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-slate-700 mb-1">Title</label>
+                            <input type="text" name="title" value="{{ resume.title }}" class="w-full px-3 py-2 border border-slate-300 rounded-lg">
+                        </div>
+                    </div>
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div>
+                            <label class="block text-sm font-medium text-slate-700 mb-1">Location</label>
+                            <input type="text" name="location" value="{{ resume.location }}" class="w-full px-3 py-2 border border-slate-300 rounded-lg">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-slate-700 mb-1">Phone</label>
+                            <input type="text" name="phone" value="{{ resume.phone }}" class="w-full px-3 py-2 border border-slate-300 rounded-lg">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-slate-700 mb-1">Email</label>
+                            <input type="email" name="email" value="{{ resume.email }}" class="w-full px-3 py-2 border border-slate-300 rounded-lg">
+                        </div>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-slate-700 mb-1">Professional Profile</label>
+                        <textarea name="professional_profile" rows="3" class="w-full px-3 py-2 border border-slate-300 rounded-lg">{{ resume.professional_profile }}</textarea>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-slate-700 mb-1">Manifesto Intro</label>
+                        <textarea name="manifesto_intro" rows="2" class="w-full px-3 py-2 border border-slate-300 rounded-lg">{{ resume.manifesto_intro }}</textarea>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-slate-700 mb-1">Manifesto Reason</label>
+                        <textarea name="manifesto_reason" rows="2" class="w-full px-3 py-2 border border-slate-300 rounded-lg">{{ resume.manifesto_reason }}</textarea>
+                    </div>
+                </div>
+
+                <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm space-y-4">
+                    <h3 class="font-bold text-slate-700 border-b pb-2">2. Professional Experience</h3>
+                    {% for exp in resume.experiences.all %}
+                    <div class="p-4 border rounded-lg bg-slate-50 space-y-3">
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                                <label class="block text-xs font-medium text-slate-500 mb-1">Job Title</label>
+                                <input type="text" name="exp_title_{{ exp.id }}" value="{{ exp.title }}" class="w-full px-3 py-1.5 text-sm border border-slate-300 rounded-lg">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-medium text-slate-500 mb-1">Date Range</label>
+                                <input type="text" name="exp_date_{{ exp.id }}" value="{{ exp.date_range }}" class="w-full px-3 py-1.5 text-sm border border-slate-300 rounded-lg">
+                            </div>
+                        </div>
+                        <div>
+                            <label class="block text-xs font-medium text-slate-500 mb-1">Company / Subtitle</label>
+                            <input type="text" name="exp_company_{{ exp.id }}" value="{{ exp.company }}" class="w-full px-3 py-1.5 text-sm border border-slate-300 rounded-lg">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-medium text-slate-500 mb-1">Bullets (One per line)</label>
+                            <textarea name="exp_bullets_{{ exp.id }}" rows="3" class="w-full px-3 py-1.5 text-sm border border-slate-300 rounded-lg">{{ exp.bullets }}</textarea>
+                        </div>
+                        <div class="flex items-center">
+                            <input type="checkbox" name="exp_current_{{ exp.id }}" id="curr_{{ exp.id }}" {% if exp.is_current %}checked{% endif %} class="rounded text-blue-600 focus:ring-blue-500 mr-2">
+                            <label for="curr_{{ exp.id }}" class="text-sm font-medium text-slate-700">Style as Current Role (Blue Date & Italic Text)</label>
+                        </div>
+                    </div>
+                    {% endfor %}
+                    <p class="text-xs text-slate-400 mt-2">* Note: To add or remove items entirely, use the Django Admin panel.</p>
+                </div>
+
+                <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm space-y-4">
+                    <h3 class="font-bold text-slate-700 border-b pb-2">3. Core Competencies</h3>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {% for comp in resume.competencies.all %}
+                        <div class="p-3 border rounded-lg bg-slate-50 space-y-2">
+                            <div class="flex gap-2">
+                                <div class="w-1/3">
+                                    <label class="block text-xs font-medium text-slate-500 mb-1">Icon Class</label>
+                                    <input type="text" name="comp_icon_{{ comp.id }}" value="{{ comp.icon }}" class="w-full px-2 py-1 text-sm border border-slate-300 rounded-lg">
+                                </div>
+                                <div class="w-2/3">
+                                    <label class="block text-xs font-medium text-slate-500 mb-1">Title</label>
+                                    <input type="text" name="comp_title_{{ comp.id }}" value="{{ comp.title }}" class="w-full px-2 py-1 text-sm border border-slate-300 rounded-lg">
+                                </div>
+                            </div>
+                            <div>
+                                <label class="block text-xs font-medium text-slate-500 mb-1">Description</label>
+                                <textarea name="comp_desc_{{ comp.id }}" rows="2" class="w-full px-2 py-1 text-sm border border-slate-300 rounded-lg">{{ comp.description }}</textarea>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+
+                <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm space-y-4">
+                    <h3 class="font-bold text-slate-700 border-b pb-2">4. Education & Background</h3>
+                    <div>
+                        <label class="block text-sm font-medium text-slate-700 mb-1">Education Title</label>
+                        <input type="text" name="edu_title" value="{{ resume.edu_title }}" class="w-full px-3 py-2 border border-slate-300 rounded-lg">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-slate-700 mb-1">Subtitle</label>
+                        <input type="text" name="edu_subtitle" value="{{ resume.edu_subtitle }}" class="w-full px-3 py-2 border border-slate-300 rounded-lg">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-slate-700 mb-1">Quote</label>
+                        <textarea name="edu_quote" rows="4" class="w-full px-3 py-2 border border-slate-300 rounded-lg">{{ resume.edu_quote }}</textarea>
+                    </div>
+                </div>
+
+            </form>
+        </div>
+
+        <div class="p-6 border-t border-slate-100 bg-white rounded-b-2xl flex justify-end gap-3 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)]">
+            <button onclick="document.getElementById('editResumeModal').classList.add('hidden')" class="px-5 py-2 text-slate-600 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 font-medium transition-colors">
+                Cancel
+            </button>
+            <button type="submit" form="editResumeForm" class="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium shadow transition-colors">
+                Save All Changes
+            </button>
+        </div>
+    </div>
+</div>
+{% endif %}

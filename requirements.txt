@@ -24,3 +24,4 @@ pdfplumber
 weasyprint
 
 django-modeladmin-reorder
+xhtml2pdf>=0.2.11

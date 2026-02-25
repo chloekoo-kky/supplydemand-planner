@@ -55,9 +55,8 @@
     </div>
 </div>
 
-<div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
-    <div class="lg:col-span-2 bg-white rounded-xl shadow-sm border border-gray-100 p-6">
-        <h3 class="text-lg font-bold text-gray-800 mb-4">Inventory Trend (30 Days)</h3>
+<div class="lg:col-span-2 bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+        <h3 class="text-lg font-bold text-gray-800 mb-4">Inventory Value Trend (30 Days)</h3>
         <div class="relative h-72 w-full bg-gray-50 rounded flex items-center justify-center border border-dashed border-gray-300">
             <canvas id="inventoryChart" class="absolute inset-0"></canvas>
         </div>
@@ -93,37 +92,69 @@
 
 <script>
     (function() {
-        var canvas = document.getElementById('inventoryChart');
-        if (!canvas) return;
+        setTimeout(function() {
+            var canvas = document.getElementById('inventoryChart');
+            if (!canvas) return;
 
-        var ctx = canvas.getContext('2d');
+            var ctx = canvas.getContext('2d');
 
-        if (window.myDashboardChart instanceof Chart) {
-            window.myDashboardChart.destroy();
-        }
-
-        window.myDashboardChart = new Chart(ctx, {
-            type: 'line',
-            data: {
-                labels: {{ chart_labels|safe|default:"[]" }},
-                datasets: [{
-                    label: 'Total Stock Level',
-                    data: {{ chart_values|safe|default:"[]" }},
-                    borderColor: 'rgb(59, 130, 246)',
-                    backgroundColor: 'rgba(59, 130, 246, 0.1)',
-                    tension: 0.4,
-                    fill: true
-                }]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: { legend: { display: false } },
-                scales: {
-                    y: { beginAtZero: true, grid: { borderDash: [2, 4], drawBorder: false } },
-                    x: { grid: { display: false } }
-                }
+            if (window.myDashboardChart instanceof Chart) {
+                window.myDashboardChart.destroy();
             }
-        });
+
+            var labels = {{ chart_labels|safe|default:"[]" }};
+            var values = {{ chart_values|safe|default:"[]" }};
+
+            window.myDashboardChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: 'Total Value (RM)', // [CHANGED] Label
+                        data: values,
+                        borderColor: 'rgb(59, 130, 246)',
+                        backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                        tension: 0.4,
+                        fill: true,
+                        pointRadius: 4,
+                        pointHoverRadius: 6
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: {
+                        mode: 'index',
+                        intersect: false,
+                    },
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    // [CHANGED] Format Tooltip as Currency
+                                    return 'Value: RM ' + context.parsed.y.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2});
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            grid: { borderDash: [2, 4], drawBorder: false },
+                            ticks: {
+                                callback: function(value) {
+                                    // [CHANGED] Format Y-Axis as Currency (Compact)
+                                    if(value >= 1000000) return 'RM ' + (value/1000000).toFixed(1) + 'M';
+                                    if(value >= 1000) return 'RM ' + (value/1000).toFixed(0) + 'k';
+                                    return 'RM ' + value;
+                                }
+                            }
+                        },
+                        x: { grid: { display: false } }
+                    }
+                }
+            });
+        }, 50);
     })();
 </script>
