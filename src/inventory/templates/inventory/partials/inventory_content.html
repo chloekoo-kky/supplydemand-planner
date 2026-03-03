@@ -290,7 +290,6 @@
     {% endfor %}
 </div>
 
-{% include 'inventory/partials/import_modal_step1_upload.html' %}
 {% include 'inventory/partials/modals/forecast_modal.html' %}
 {% include 'inventory/partials/modals/edit_product_modal.html' %}
 {% include 'inventory/partials/modals/demand_analysis_modal.html' %}
@@ -946,25 +945,41 @@
                 ltBody.innerHTML = '';
                 if (json.lt_data.length > 0) {
                     json.lt_data.forEach(row => {
-                        // Calculate Balance format
-                        const balanceFormatted = parseFloat(row.balance_after).toFixed(2);
-                        // Optional: Add red color if balance drops below zero
-                        const balClass = row.balance_after < 0 ? 'text-red-600 font-bold' : 'text-gray-500';
+                        const balanceVal = parseFloat(row.balance_after);
+                        const balanceFormatted = balanceVal.toFixed(2);
+                        const balClass = balanceVal < 0 ? 'text-red-600 font-bold' : 'text-gray-500';
 
-                        ltBody.innerHTML += `
-                            <tr>
-                                <td class="px-3 py-2 font-medium text-gray-800">
-                                    <div>${row.order_ref}</div>
-                                    <div class="text-[10px] text-gray-400 font-normal truncate max-w-[200px]" title="${row.order_desc || ''}">${row.order_desc || ''}</div>
-                                </td>
-                                <td class="px-3 py-2 text-gray-500">${row.date}</td>
-                                <td class="px-3 py-2 text-right font-bold text-gray-700">${row.qty}</td>
-                                <td class="px-3 py-2 text-right ${balClass}">${balanceFormatted}</td>
-                            </tr>
-                        `;
+                        console.log('[LT] order_desc HTML:', row.order_desc);
+
+                        const tr = document.createElement('tr');
+
+                        const orderCell = tr.insertCell();
+                        orderCell.className = 'px-3 py-2 font-medium text-gray-800';
+                        const refDiv = document.createElement('div');
+                        refDiv.textContent = row.order_ref;
+                        const descDiv = document.createElement('div');
+                        descDiv.className = 'text-[10px] text-gray-400 font-normal whitespace-normal break-words leading-tight max-w-[200px]';
+                        descDiv.title = row.order_desc || '';
+                        // CRITICAL: render HTML spans from backend
+                        descDiv.innerHTML = row.order_desc || '';
+                        orderCell.appendChild(refDiv);
+                        orderCell.appendChild(descDiv);
+
+                        const dateCell = tr.insertCell();
+                        dateCell.className = 'px-3 py-2 text-gray-500';
+                        dateCell.textContent = row.date;
+
+                        const qtyCell = tr.insertCell();
+                        qtyCell.className = 'px-3 py-2 text-right font-bold text-gray-700';
+                        qtyCell.textContent = row.qty;
+
+                        const balCell = tr.insertCell();
+                        balCell.className = `px-3 py-2 text-right ${balClass}`;
+                        balCell.textContent = balanceFormatted;
+
+                        ltBody.appendChild(tr);
                     });
                 } else {
-                    // Update colspan to 4
                     ltBody.innerHTML = '<tr><td colspan="4" class="px-3 py-2 text-center text-gray-400 italic">No usage during Lead Time.</td></tr>';
                 }
 
@@ -974,21 +989,39 @@
                 if (json.run_out_data.length > 0) {
                     json.run_out_data.forEach(row => {
                         const rowClass = row.is_breaker ? 'bg-red-50' : '';
-                        const balClass = row.is_breaker ? 'text-red-600 font-bold' : 'text-gray-500';
-                        const balanceFormatted = parseFloat(row.balance_after).toFixed(2);
+                        const balanceVal = parseFloat(row.balance_after);
+                        const balClass = balanceVal < 0 ? 'text-red-600 font-bold' : 'text-gray-500';
+                        const balanceFormatted = balanceVal.toFixed(2);
 
-                        // UPDATED: Added row.order_desc for consistency
-                        roBody.innerHTML += `
-                            <tr class="${rowClass}">
-                                <td class="px-3 py-2 font-medium text-gray-800">
-                                    <div>${row.order_ref}</div>
-                                    <div class="text-[12px] text-gray-500 font-normal truncate max-w-[200px]" title="${row.order_desc || ''}">${row.order_desc || ''}</div>
-                                </td>
-                                <td class="px-3 py-2 text-gray-500">${row.date}</td>
-                                <td class="px-3 py-2 text-right font-bold text-gray-700">${row.qty}</td>
-                                <td class="px-3 py-2 text-right ${balClass}">${balanceFormatted}</td>
-                            </tr>
-                        `;
+                        console.log('[Run-out] order_desc HTML:', row.order_desc);
+
+                        const tr = document.createElement('tr');
+                        if (rowClass) tr.className = rowClass;
+
+                        const orderCell = tr.insertCell();
+                        orderCell.className = 'px-3 py-2 font-medium text-gray-800';
+                        const refDiv = document.createElement('div');
+                        refDiv.textContent = row.order_ref;
+                        const descDiv = document.createElement('div');
+                        descDiv.className = 'text-[12px] text-gray-500 font-normal whitespace-normal break-words leading-tight max-w-[200px]';
+                        descDiv.title = row.order_desc || '';
+                        descDiv.innerHTML = row.order_desc || '';
+                        orderCell.appendChild(refDiv);
+                        orderCell.appendChild(descDiv);
+
+                        const dateCell = tr.insertCell();
+                        dateCell.className = 'px-3 py-2 text-gray-500';
+                        dateCell.textContent = row.date;
+
+                        const qtyCell = tr.insertCell();
+                        qtyCell.className = 'px-3 py-2 text-right font-bold text-gray-700';
+                        qtyCell.textContent = row.qty;
+
+                        const balCell = tr.insertCell();
+                        balCell.className = `px-3 py-2 text-right ${balClass}`;
+                        balCell.textContent = balanceFormatted;
+
+                        roBody.appendChild(tr);
                     });
                 } else {
                     roBody.innerHTML = '<tr><td colspan="4" class="px-3 py-2 text-center text-gray-400 italic">Stock covers all active orders.</td></tr>';

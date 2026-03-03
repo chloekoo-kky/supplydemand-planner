@@ -7,11 +7,12 @@ from django.contrib.auth.forms import AuthenticationForm
 from django.contrib.auth.models import User
 from django.core.management import call_command
 from django.contrib.auth.decorators import login_required
-from django.db.models import Sum, F, OuterRef, Subquery
+from django.db.models import Sum, F, OuterRef, Subquery, Q
 from django.utils import timezone
 from django.views.decorators.http import require_POST
 from inventory.models import Product, InventorySnapshot
 from production.models import ProductionOrder
+from forecast.models import MarketDemand, OutboundShipment
 
 from .models import ResumeProfile, Experience, Competency
 from django.http import HttpResponse, HttpResponseForbidden
@@ -78,46 +79,87 @@ def demo_login_view(request):
 
 @login_required
 def home(request):
-    # 获取每个产品最新的库存快照
+    """
+    Control Tower dashboard: holistic view of Supply, Demand, and Production.
+    """
+    today = timezone.now().date()
+
+    # === INVENTORY ===
     latest_snapshot = InventorySnapshot.objects.filter(
         product=OuterRef('pk')
     ).order_by('-snapshot_date')
 
-    # 在数据库层面计算当前库存和安全库存阈值
     products_with_stock = Product.objects.annotate(
         current_stock=Subquery(latest_snapshot.values('quantity_on_hand')[:1]),
-        calculated_safety_stock=F('estimated_daily_usage') * F('safety_stock_days')
+        calculated_safety_stock=F('estimated_daily_usage') * F('safety_stock_days'),
     )
 
-    # 1. 总 SKU 数
     total_products = products_with_stock.count()
-
-    # 2. 低库存预警 (当前库存 < 计算出的安全库存)
-    low_stock_products = products_with_stock.filter(current_stock__lt=F('calculated_safety_stock'))
+    low_stock_products = products_with_stock.filter(
+        current_stock__lt=F('calculated_safety_stock')
+    )
     low_stock_count = low_stock_products.count()
 
-    # 3. 库存总值计算
     total_value = products_with_stock.aggregate(
         total=Sum(F('current_stock') * F('cost_price'))
     )['total'] or 0
 
-    # 4. 获取最近30天的全库库存趋势 (用于图表)
-    thirty_days_ago = timezone.now().date() - timezone.timedelta(days=30)
+    # Critical OOS: stock = 0 but has active (unfulfilled) demand
+    unfulfilled_demand_qs = MarketDemand.objects.filter(
+        demand_type='ACTUAL',
+        shipped_date__isnull=True,
+    ).filter(Q(is_allocated=False) | Q(allocated_qty__lte=0))
+    demand_product_ids = unfulfilled_demand_qs.values_list('product_id', flat=True).distinct()
+    critical_oos_count = products_with_stock.filter(
+        Q(current_stock__lte=0) | Q(current_stock__isnull=True),
+        id__in=demand_product_ids,
+    ).count()
+
+    # === DEMAND ===
+    unfulfilled_demand_qty = unfulfilled_demand_qs.aggregate(total=Sum('quantity'))['total'] or 0
+    unfulfilled_demand_count = unfulfilled_demand_qs.count()
+
+    # === PRODUCTION ===
+    wip_orders_count = ProductionOrder.objects.filter(status='IN_PROGRESS').count()
+    draft_orders_count = ProductionOrder.objects.filter(status='DRAFT').count()
+    urgent_low_stock_items = low_stock_products.order_by('current_stock')[:5]
+    draft_orders_list = ProductionOrder.objects.filter(status='DRAFT').select_related('product').order_by('start_date')[:5]
+
+    # === UPCOMING SHIPMENTS (by ETD, future only) ===
+    upcoming_shipments = OutboundShipment.objects.filter(
+        etd__gte=today
+    ).order_by('etd')[:5]
+
+    # === CHART (30-day historical inventory value) ===
+    thirty_days_ago = today - timezone.timedelta(days=30)
     history_data = InventorySnapshot.objects.filter(
         snapshot_date__gte=thirty_days_ago
     ).values('snapshot_date').annotate(
         total_value=Sum(F('quantity_on_hand') * F('product__cost_price'))
     ).order_by('snapshot_date')
 
+    chart_labels = [d['snapshot_date'].strftime('%Y-%m-%d') for d in history_data]
+    chart_values = [float(d['total_value'] or 0) for d in history_data]
+
     context = {
         'total_products': total_products,
         'low_stock_count': low_stock_count,
-        'total_inventory_value': f"RM {total_value / 1000000:.2f}M" if total_value >= 1000000 else f"RM {total_value:,.2f}",
-        'pending_pos': ProductionOrder.objects.filter(status='PENDING').count(),
-        'urgent_items': low_stock_products[:5],
-        # [CHANGED] Pass 'total_value' and ensure it handles None/Decimal conversion
-        'chart_labels': [d['snapshot_date'].strftime('%Y-%m-%d') for d in history_data],
-        'chart_values': [float(d['total_value'] or 0) for d in history_data],
+        'critical_oos_count': critical_oos_count,
+        'total_inventory_value': (
+            f"RM {total_value / 1000000:.2f}M"
+            if total_value >= 1000000
+            else f"RM {total_value:,.2f}"
+        ),
+        'unfulfilled_demand_qty': float(unfulfilled_demand_qty),
+        'unfulfilled_demand_count': unfulfilled_demand_count,
+        'wip_orders_count': wip_orders_count,
+        'draft_orders_count': draft_orders_count,
+        'urgent_low_stock_items': urgent_low_stock_items,
+        'draft_orders_list': draft_orders_list,
+        'upcoming_shipments': upcoming_shipments,
+        'urgent_items': urgent_low_stock_items,
+        'chart_labels': chart_labels,
+        'chart_values': chart_values,
     }
 
     if request.headers.get('x-requested-with') == 'XMLHttpRequest':

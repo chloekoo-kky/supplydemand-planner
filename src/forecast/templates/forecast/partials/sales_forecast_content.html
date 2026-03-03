@@ -272,7 +272,7 @@
                                                     {% if detail.actual_obj.shipped_date %}
                                                         <span class="text-green-600 font-medium">{{ detail.actual_obj.shipped_date|date:"M d" }}</span>
                                                     {% elif detail.actual_obj.shipment and detail.actual_obj.shipment.etd %}
-                                                        <span class="text-gray-600">ETD: {{ detail.actual_obj.shipment.etd|date:"M d" }}</span>
+                                                        <span class="text-gray-600">{{ detail.actual_obj.shipment.etd|date:"d/m/Y" }}</span>
                                                     {% else %}
                                                         <span class="text-gray-300">-</span>
                                                     {% endif %}
@@ -291,7 +291,7 @@
                                                                 '{{ detail.actual_qty }}',
                                                                 '{{ detail.actual_obj.allocated_qty|default:0 }}',
                                                                 '{{ group.available_stock|default:0|floatformat:0 }}',
-                                                                '{{ detail.actual_obj.shipment.id|default:'' }}'
+                                                                '{{ detail.actual_obj.shipment.id|default:"" }}'
                                                             )"
                                                             class="{% if detail.actual_obj.allocated_qty > 0 %}text-blue-600 border-blue-200{% else %}text-purple-600 border-purple-200{% endif %} hover:bg-gray-50 border rounded px-2 py-1 text-[10px] font-medium transition-colors">
                                                         {% if detail.actual_obj.allocated_qty > 0 %}
@@ -392,11 +392,23 @@
     // === 1. Initialize State & Persistence ===
     window.currentMonthState = '{{ current_month_filter }}';
     window.currentSortState = '{{ current_sort }}';
-    // [NEW] Track current page (defaults to server-side loaded page if we were to support deep linking better, but 1 is safe for JS resets)
     window.currentPageState = 1;
 
-    // ... (Bind AJAX Submission) ...
-    (function setupAllocationForm() {
+    window.restoreExpandedRow = function() {
+        const rowId = sessionStorage.getItem('expandedForecastRow');
+        if (rowId) {
+            setTimeout(() => {
+                const rowToOpen = document.getElementById(rowId);
+                const icon = document.getElementById('icon-' + rowId);
+                if (rowToOpen) {
+                    rowToOpen.classList.remove('hidden');
+                    if (icon) icon.classList.add('rotate-90');
+                }
+            }, 50);
+        }
+    };
+
+    window.setupAllocationForm = function() {
         const form = document.getElementById('allocationForm');
         if (form) {
             form.onsubmit = function(e) {
@@ -423,7 +435,8 @@
                 .finally(() => { submitBtn.disabled = false; submitBtn.innerText = originalText; });
             };
         }
-    })();
+    };
+    window.setupAllocationForm();
 
     window.openForecastImportModal = function(type) {
         if (typeof openDemandModal === 'function') {
@@ -440,9 +453,11 @@
             if (detailRow.classList.contains('hidden')) {
                 detailRow.classList.remove('hidden');
                 if (icon) icon.classList.add('rotate-90');
+                sessionStorage.setItem('expandedForecastRow', rowId);
             } else {
                 detailRow.classList.add('hidden');
                 if (icon) icon.classList.remove('rotate-90');
+                sessionStorage.removeItem('expandedForecastRow');
             }
         }
     }
@@ -540,7 +555,7 @@
         if (month) {
             url += `&month=${month}`;
         } else {
-             url += `&month=`; // Clear filter explicit param
+             url += `&month=`;
         }
 
         if (page) {
@@ -559,6 +574,9 @@
 
             if (newWrapper && currentWrapper) {
                 currentWrapper.innerHTML = newWrapper.innerHTML;
+                window.restoreExpandedRow();
+                window.setupAllocationForm();
+
                 const newInput = document.getElementById('searchInput');
                 if (newInput) {
                     newInput.focus();
@@ -570,11 +588,11 @@
         })
         .catch(err => console.error('Error updating table:', err));
     }
+
+    document.addEventListener('DOMContentLoaded', window.restoreExpandedRow);
 </script>
 
 <style>
     .rotate-90 { transform: rotate(90deg); }
     .select-none { user-select: none; }
 </style>
-
-}

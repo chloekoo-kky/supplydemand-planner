@@ -30,6 +30,7 @@ from .models import (
     ProductAlias, Supplier, BillOfMaterial
 )
 from production.models import ProductionOrder, ProductionComponent
+from forecast.models import MarketDemand
 from .services import extract_data_from_file
 
 COLUMN_MAPPING = {
@@ -333,72 +334,145 @@ def inventory_list(request, nature_code=None):
 @login_required
 def product_demand_analysis(request, pk):
     """
-    Returns detailed demand analysis for a specific product:
-    1. Orders consuming stock during Lead Time.
-    2. Orders that will exhaust the current balance (Run-out analysis), EXCLUDING those already in LT.
+    Demand analysis for any product nature. Same UI (lt_data + run_out_data), different data source:
+    - RAW/PKG: ProductionComponent consumption (running balance; break when balance <= 0 in run-out).
+    - FG: MarketDemand (unshipped); allow negative balance so planner sees deficit; cap run_out at 15.
     """
     product = get_object_or_404(Product, pk=pk)
 
-    # 1. Get Current Stock
     last_snapshot = InventorySnapshot.objects.filter(product=product).order_by('-snapshot_date').first()
     current_soh = float(last_snapshot.quantity_on_hand) if last_snapshot else 0.0
 
-    # 2. Get Lead Time Date
     lead_time = product.lead_time_days
     today = timezone.now().date()
     lt_end_date = today + timedelta(days=lead_time)
 
-    # 3. Fetch All Active Demands (Sorted by Date)
-    active_components = ProductionComponent.objects.filter(
-        component=product,
-        production_order__status__in=['DRAFT', 'CONFIRMED', 'IN_PROGRESS']
-    ).select_related('production_order', 'production_order__product').order_by('production_order__start_date')
-
     lt_usage_list = []
     run_out_list = []
-
-    # Unified Logic: Calculate running balance through time
     running_balance = current_soh
 
-    for item in active_components:
-        ord_date = item.production_order.start_date
-        qty = float(item.quantity_required)
+    if product.nature in ['RAW', 'PKG']:
+        active_components = ProductionComponent.objects.filter(
+            component=product,
+            production_order__status__in=['DRAFT', 'CONFIRMED', 'IN_PROGRESS']
+        ).select_related('production_order', 'production_order__product').order_by('production_order__start_date')
 
-        # Get FG Description
-        fg_desc = item.production_order.product.description if item.production_order.product else "Unknown Product"
+        for item in active_components:
+            ord_date = item.production_order.start_date
+            qty = float(item.quantity_required)
+            fg_desc = item.production_order.product.description if item.production_order.product else "Unknown Product"
 
-        if ord_date <= lt_end_date:
-            # === Table 1: Usage During Lead Time ===
-            # Always list these requirements so user knows what is needed immediately.
-            running_balance -= qty
+            if ord_date <= lt_end_date:
+                running_balance -= qty
+                lt_usage_list.append({
+                    'order_ref': item.production_order.order_number,
+                    'order_desc': fg_desc,
+                    'date': ord_date.strftime('%Y-%m-%d'),
+                    'qty': qty,
+                    'status': item.production_order.status,
+                    'balance_after': running_balance,
+                })
+            else:
+                if running_balance <= 0:
+                    break
+                new_balance = running_balance - qty
+                is_breaker = (new_balance < 0)
+                run_out_list.append({
+                    'order_ref': item.production_order.order_number,
+                    'order_desc': fg_desc,
+                    'date': ord_date.strftime('%Y-%m-%d'),
+                    'qty': qty,
+                    'balance_after': max(0, new_balance),
+                    'is_breaker': is_breaker,
+                })
+                running_balance = new_balance
 
-            lt_usage_list.append({
-                'order_ref': item.production_order.order_number,
-                'order_desc': fg_desc,
-                'date': ord_date.strftime('%Y-%m-%d'),
+    elif product.nature == 'FG':
+        # ATP (Available-To-Promise): only allocated demand consumes stock
+        combined = []
+
+        # Outgoing demand: only allocated, unshipped ACTUAL (deduct allocated_qty)
+        demands = MarketDemand.objects.filter(
+            product=product,
+            shipped_date__isnull=True,
+            period_date__gte=today,
+            demand_type='ACTUAL',
+            allocated_qty__gt=0,
+        ).select_related('shipment').order_by('period_date')
+
+        for demand in demands:
+            ord_date = demand.shipment.etd if demand.shipment else demand.period_date
+            qty = -float(demand.allocated_qty)
+            ref = demand.shipment.reference if demand.shipment else demand.country
+
+            base_desc = "[-] Sales Demand (Allocated)"
+            if demand.shipment:
+                base_desc += (
+                    "<br><span class='text-xs font-normal opacity-80'>"
+                    f"Shipment: {demand.shipment.reference}</span>"
+                )
+            desc = (
+                f'<span class="text-red-600 font-bold block leading-tight">'
+                f'{base_desc}</span>'
+            )
+
+            combined.append({
+                'ord_date': ord_date,
                 'qty': qty,
-                'status': item.production_order.status,
-                'balance_after': running_balance # Display actual balance (can be negative here to show immediate shortage)
+                'order_ref': ref,
+                'order_desc': desc,
+                'status': demand.demand_type,
             })
-        else:
-            # === Table 2: Run-out Projection (Post-Lead Time) ===
-            # If stock is already exhausted by LT orders, we stop projecting (Table 2 is empty)
-            if running_balance <= 0:
-                break
 
-            new_balance = running_balance - qty
-            is_breaker = (new_balance < 0)
+        # Incoming supply: adds stock (positive qty)
+        supplies = ProductionOrder.objects.filter(
+            product=product,
+            status__in=['DRAFT', 'CONFIRMED', 'IN_PROGRESS'],
+            start_date__gte=today,
+        ).order_by('start_date')
 
-            run_out_list.append({
-                'order_ref': item.production_order.order_number,
-                'order_desc': fg_desc,
+        for po in supplies:
+            ref = po.order_number
+            supply_desc = (
+                "[+] Incoming Production<br>"
+                f"<span class='text-xs font-normal opacity-80'>{ref}</span>"
+            )
+            desc = (
+                f'<span class="text-emerald-600 font-bold block leading-tight">'
+                f'{supply_desc}</span>'
+            )
+            combined.append({
+                'ord_date': po.start_date,
+                'qty': float(po.quantity),
+                'order_ref': ref,
+                'order_desc': desc,
+                'status': po.status,
+            })
+
+        # Sort by event date and walk the combined timeline
+        combined.sort(key=lambda x: x['ord_date'])
+
+        for item in combined:
+            ord_date = item['ord_date']
+            qty = item['qty']
+            running_balance += qty
+
+            row = {
+                'order_ref': item['order_ref'],
+                'order_desc': item['order_desc'],
                 'date': ord_date.strftime('%Y-%m-%d'),
-                'qty': qty,
-                'balance_after': max(0, new_balance), # Floor at 0 for visual clarity in projection
-                'is_breaker': is_breaker
-            })
+                'qty': abs(qty),
+                'balance_after': running_balance,
+                'status': item.get('status', ''),
+            }
 
-            running_balance = new_balance
+            if ord_date <= lt_end_date:
+                lt_usage_list.append(row)
+            else:
+                if len(run_out_list) >= 15:
+                    break
+                row['is_breaker'] = (running_balance < 0)
+                run_out_list.append(row)
 
     return JsonResponse({
         'status': 'ok',
@@ -408,7 +482,7 @@ def product_demand_analysis(request, pk):
         'eta': lt_end_date.strftime('%Y-%m-%d'),
         'current_stock': current_soh,
         'lt_data': lt_usage_list,
-        'run_out_data': run_out_list
+        'run_out_data': run_out_list,
     })
 
 @login_required

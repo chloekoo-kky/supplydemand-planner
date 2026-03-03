@@ -24,10 +24,10 @@ class Command(BaseCommand):
         )
 
     def handle(self, *args, **options):
-        # === DATE ALIGNMENT ===
+        # === DATE ALIGNMENT: future-only data from today (no historical seed) ===
         today = timezone.now().date()
         self.SIMULATION_DATE = today
-        self.START_DATE = today - relativedelta(months=6)
+        self.START_DATE = today
 
         with transaction.atomic():
             self.clear_data()
@@ -190,111 +190,158 @@ class Command(BaseCommand):
             )
 
     def create_shipments(self):
-        """Create sample shipments relative to current date"""
-        self.stdout.write("Creating Outbound Shipments...")
+        self.stdout.write("Creating 15 Outbound Shipments...")
+        self.future_shipments = []
+        destinations = ['Malaysia', 'India', 'Singapore']
 
-        base_date = self.SIMULATION_DATE
+        for i in range(15):
+            etd = self.SIMULATION_DATE + timedelta(days=random.randint(5, 150))
+            dest = random.choice(destinations)
+            status = 'CONFIRMED' if (etd - self.SIMULATION_DATE).days <= 14 else 'PLANNING'
+            month_str = etd.strftime('%b%y').upper()
+            dest_code = dest[:3].upper()
+            ref = f"CONT-{month_str}-{dest_code}-{random.randint(10,99)}"
 
-        def get_ref(dt, dest):
-            month_str = dt.strftime('%b%y').upper()
-            dest_code = dest[:3].upper() if dest else "OTH"
-            return f"CONT-{month_str}-{dest_code}-01"
-
-        dates = [
-            (base_date - relativedelta(months=1), 'Malaysia'),
-            (base_date + relativedelta(days=10), 'India'), # Coming up soon
-            (base_date + relativedelta(months=1), 'Malaysia'),
-        ]
-
-        for ship_date, dest in dates:
-            OutboundShipment.objects.create(
-                reference=get_ref(ship_date, dest),
-                etd=ship_date,
-                destination=dest,
-                status='PLANNING'
-            )
+            shipment = OutboundShipment.objects.create(reference=ref, etd=etd, destination=dest, status=status)
+            self.future_shipments.append(shipment)
+        return self.future_shipments
 
     def create_production_orders(self):
-        """Generating Production Orders (8+ per month, DRAFT)"""
+        """
+        Make-to-Order (MTO): Production batches are sized and scheduled to fulfill
+        3-market demand. No overbuilding; each batch covers the next wave of orders.
+
+        - Total daily outflow = estimated_daily_usage * 3 markets.
+        - Monthly target = total_daily_outflow * 30.
+        - 6 batches per month (one every 5 days); batch_qty = (monthly_target/6) * [1.0, 1.1].
+        - First 3 orders CONFIRMED (near-term), last 3 DRAFT (planning).
+        """
         self.stdout.write("Generating Production Orders...")
+        today = self.SIMULATION_DATE
         fgs = list(Product.objects.filter(nature='FG'))
-        if not fgs: return
+        if not fgs:
+            return
 
-        current_month = self.SIMULATION_DATE
-        end_month = self.SIMULATION_DATE + relativedelta(months=6)
+        batches_per_month = 6
+        days_between_batches = 5
 
-        while current_month < end_month:
-            orders_count = random.randint(8, 12)
-            _, days_in_month = calendar.monthrange(current_month.year, current_month.month)
+        for product in fgs:
+            daily_per_market = float(product.estimated_daily_usage)
+            total_daily_outflow = daily_per_market * 3  # 3 markets
+            monthly_target = total_daily_outflow * 30
 
-            for _ in range(orders_count):
-                product = random.choice(fgs)
-                qty = decimal.Decimal(random.randint(20, 100))
-                random_day = random.randint(1, days_in_month)
+            if monthly_target <= 0:
+                continue
 
-                try:
-                    start_date = current_month.replace(day=random_day)
-                except ValueError:
-                    start_date = current_month.replace(day=days_in_month)
+            base_batch_qty = monthly_target / batches_per_month
+
+            for i in range(batches_per_month):
+                start_date = today + timedelta(days=i * days_between_batches)
+                # Slight buffer so production stays ahead of demand (safety stock)
+                raw_qty = base_batch_qty * random.uniform(1.0, 1.1)
+                qty_val = max(1, int(raw_qty))
+                qty = decimal.Decimal(qty_val)
+
+                status = 'CONFIRMED' if i < 3 else 'DRAFT'
 
                 po = ProductionOrder.objects.create(
-                    order_number=f"PO-{start_date.strftime('%y%m')}-{random.randint(1000,9999)}",
-                    product=product, quantity=qty, start_date=start_date, status='DRAFT'
+                    order_number=f"PO-{start_date.strftime('%y%m')}-{random.randint(1000, 9999)}",
+                    product=product,
+                    quantity=qty,
+                    start_date=start_date,
+                    status=status,
                 )
 
                 for bom in BillOfMaterial.objects.filter(product=product):
                     req_qty = bom.quantity * qty
                     ProductionComponent.objects.create(
-                        production_order=po, component=bom.component, quantity_required=req_qty, quantity_used=0
+                        production_order=po,
+                        component=bom.component,
+                        quantity_required=req_qty,
+                        quantity_used=decimal.Decimal('0'),
                     )
 
-            current_month += relativedelta(months=1)
-
     def create_market_demand(self):
-        """Generating Market Demand (Values capped < 1000)"""
-        self.stdout.write("Generating Market Demand...")
+        self.stdout.write("Generating Market Demand (Sales & Forecasts)...")
         random.seed(42)
         fgs = Product.objects.filter(nature='FG')
-
+        today = self.SIMULATION_DATE
         current_month = self.START_DATE
         end_month = self.SIMULATION_DATE + relativedelta(months=6)
-
-        markets = ['Malaysia', 'India']
+        markets = ['Malaysia', 'India', 'Singapore']
 
         while current_month < end_month:
+            is_past = current_month < today
+            days_into_future = (current_month - today).days
+
             for product in fgs:
                 for country in markets:
                     daily_usage = float(product.estimated_daily_usage)
                     monthly_base = int(daily_usage * 30)
 
-                    # --- 1. FORECAST ---
+                    # 1. FORECAST (Generated exactly on current_month date)
                     seasonality = 1.2 if current_month.month in [11, 12, 1] else 1.0
-                    variance_fc = random.uniform(1.2, 1.5)
-                    fc_qty = int(monthly_base * seasonality * variance_fc)
-                    fc_qty = min(fc_qty, 980) # Safety cap
-
+                    fc_qty = min(
+                        int(monthly_base * seasonality * random.uniform(1.2, 1.5)),
+                        980,
+                    )
                     MarketDemand.objects.create(
                         product=product,
                         period_date=current_month,
                         country=country,
                         quantity=fc_qty,
-                        demand_type='FORECAST'
+                        demand_type='FORECAST',
+                        is_allocated=False,
                     )
 
-                    # --- 2. ACTUAL SALES ORDERS ---
-                    variance_act = random.uniform(0.9, 1.15)
-                    act_qty = int(monthly_base * variance_act)
-                    act_qty = min(act_qty, 980) # Safety cap
-
-                    MarketDemand.objects.create(
+                    # 2. ACTUAL SALES ORDERS
+                    act_qty = min(
+                        int(monthly_base * random.uniform(0.9, 1.15)),
+                        980,
+                    )
+                    demand = MarketDemand(
                         product=product,
-                        period_date=current_month,
+                        period_date=current_month,  # CRITICAL FIX: Must match Forecast date exactly for grouping
                         country=country,
                         quantity=act_qty,
                         demand_type='ACTUAL',
-                        shipment=None,
-                        allocated_qty=0,
-                        is_allocated=False
                     )
+
+                    if is_past:
+                        demand.shipped_date = current_month + relativedelta(days=28)
+                        demand.is_allocated = True
+                        demand.allocated_qty = act_qty
+                    else:
+                        demand.shipped_date = None
+
+                        # Link to Shipment (High probability to ensure it shows up in UI)
+                        # STRICT MATCH: Destination AND exact Month/Year
+                        valid_shipments = [
+                            s for s in getattr(self, 'future_shipments', [])
+                            if s.destination == country
+                            and s.etd.year == current_month.year
+                            and s.etd.month == current_month.month
+                        ]
+                        if valid_shipments and random.random() > 0.2:  # 80% chance
+                            demand.shipment = random.choice(valid_shipments)
+
+                        # Simulate Allocation: Force allocation if it's tied to a shipment,
+                        # otherwise use random chance
+                        if demand.shipment or (days_into_future <= 45 and random.random() > 0.3):
+                            demand.is_allocated = True
+                            # If it has a shipment, allocate almost full quantity.
+                            # Otherwise, random partial allocation.
+                            ratio = (
+                                random.uniform(0.8, 1.0)
+                                if demand.shipment
+                                else random.uniform(0.5, 1.0)
+                            )
+                            demand.allocated_qty = int(act_qty * ratio)
+                        else:
+                            demand.is_allocated = False
+                            demand.allocated_qty = 0
+
+                    # CRITICAL FIX: Ensure the record is saved to the database!
+                    demand.save()
 
             current_month += relativedelta(months=1)
